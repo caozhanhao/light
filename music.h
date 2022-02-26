@@ -96,7 +96,7 @@ namespace light::music
       auto temp = buffer.size();
       buffer.resize(buffer.size() + n);
       memcpy(&buffer[temp], arr, n);
-      free_read();
+      //free_read();
     }
     void free_read()
     {
