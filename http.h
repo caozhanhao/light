@@ -299,7 +299,7 @@ namespace light::http
   {
     if (dltotal == 0) return 0;
     auto pd = (Response*)userp;
-    if (pd->buffer()->size() == 0)
+    if (pd->buffer()->size() != dltotal)
       pd->buffer()->set_size(std::size_t(dltotal));
     if (dlnow == dltotal)
       pd->buffer()->set_eof();
