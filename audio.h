@@ -140,11 +140,14 @@ namespace light::audio
   enum mad_flow header_func(void* data, struct mad_header const* header)
   {
     Data* d = (Data*)data;
-    if(!d->started && d->pos.as_uint() != 0)
+    if(!d->started)
     {
       d->pos.set_bitrate(header->bitrate);
-      d->music->seek(d->pos.as_size());
-      d->decoder_buffer.fill(0);
+      if(d->pos.as_uint() != 0)
+      {
+        d->music->seek(d->pos.as_size());
+        d->decoder_buffer.fill(0);
+      }
     }
     if (!d->started)
     {
