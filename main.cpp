@@ -3,10 +3,50 @@ extern const int LIGHT_AUDIO_READ_BUFFER_SIZE = 65536;
 #include <string>
 using namespace std;
 using namespace light;
+bool is_http(const std::string& str)
+{
+  std::string a = str.substr(0, 7);
+  for (auto& r : a)
+    r = std::tolower(r);
+  return a == "https://" || a == "http://";
+}
 int main(int argc, char* argv[])
 {
   Player player;
   Option option(argc, argv);
+  option.add(argv[0],
+    [&player](Option::CallbackArgType args)
+    {
+      std::thread([&player]
+        {
+          while (true)
+          {
+            std::string input;
+            std::cin >> input;
+            if(input == "pause")
+            {
+              player.pause();
+            }
+            else if(input == "go")
+            {
+              player.go();
+            }
+            else if(input == "quit")
+            {
+              std::cout << player.curr().as_uint() << std::endl;
+              exit(0);
+            }
+          }
+        }).detach();
+      for (auto& r : args)
+      {
+        if (is_http(r))
+          player.push_online(r);
+        else
+          player.push_local(r);
+        player.ordered_play();
+      }
+    });
   option.add("s", "server",
     [&player](Option::CallbackArgType args)
     {

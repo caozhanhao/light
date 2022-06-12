@@ -45,6 +45,24 @@ namespace light::player
     bool cache;
   public:
     Player() : index(0), bar(true), cache(false) {  }
+    bool is_paused() const
+    {
+      return audio.is_paused();
+    }
+    Player& pause()
+    {
+      audio.pause();
+      return *this;
+    }
+    Player& go()
+    {
+      audio.go();
+      return *this;
+    }
+    auto curr()
+    {
+      return audio.curr();
+    }
     Player& set_audio_server(const std::string& server)
     {
       audio.init(server);
@@ -148,20 +166,20 @@ namespace light::player
       music_list.pop_front();
       return *this;
     }
-    Player& ordered_play(int num = -1)
+    Player& ordered_play(int num = -1, int pos = 0)
     {
       if(num == -1) num = music_list.size();
       for (auto i = 0; i < num; i++)
       {
         check_list();
         if (bar) std::cout << music_list[index].name();
-        audio.play(music_list[index].get_file());
+        audio.play(music_list[index].get_file(), pos);
         next_line();
         index++;
       }
       return *this;
     }
-    Player& random_play(int num = -1)
+    Player& random_play(int num = -1, int pos = 0)
     {
       if(num == -1) num = music_list.size();
       for (auto i = 0; i < num; i++)
@@ -169,12 +187,12 @@ namespace light::player
         check_list();
         auto& music = music_list[randint(0, music_list.size() - 1)];
         if (bar) std::cout << music.name();
-        audio.play(music.get_file());
+        audio.play(music.get_file(), pos);
         next_line();
       }
       return *this;
     }
-    Player& repeated_play(int num = -1)
+    Player& repeated_play(int num = -1, int pos =0)
     {
       check_list();
       if (num == -1)
@@ -182,7 +200,7 @@ namespace light::player
         while (true)
         {
           if (bar) std::cout << music_list[index].name();
-          audio.play(music_list[index].get_file());
+          audio.play(music_list[index].get_file(), pos);
           next_line();
         }
       }
@@ -191,7 +209,7 @@ namespace light::player
         for (auto i = 0; i < num; i++)
         {
           if (bar) std::cout << music_list[index].name();
-          audio.play(music_list[index].get_file());
+          audio.play(music_list[index].get_file(), pos);
           next_line();
         }
         index++;

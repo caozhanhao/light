@@ -2,6 +2,8 @@
 #include <string>
 #include <iostream>
 #include <thread>
+#include <condition_variable>
+#include <mutex>
 namespace light::bar
 {
   class Bar
@@ -15,8 +17,8 @@ namespace light::bar
     bool first;
   public:
     Bar(std::size_t size_ = 36, char progress_ = '>', char padding_ = ' ')
-      : padding(padding_), progress(progress_), size(size_), finished_size(0),
-      last_addition_size(0), first(true) {}
+        : padding(padding_), progress(progress_), size(size_), finished_size(0),
+          last_addition_size(0), first(true) {}
     Bar& set(std::size_t size_, char progress_, char padding_)
     {
       size = size_;
@@ -29,7 +31,7 @@ namespace light::bar
       if (first)
       {
         std::cout << "[" << std::string(size, padding) << "]"
-          << add(addition) << std::flush;
+                  << add(addition) << std::flush;
         first = false;
       }
       if (finished_size < size && size * achieved_ratio - finished_size > 0.5)
@@ -69,12 +71,14 @@ namespace light::bar
     std::string s = seconds > 9 ? std::to_string(seconds) : "0" + std::to_string(seconds);
     return m + ":" + s;
   };
-
   class TimeBar : private Bar
   {
   private:
     unsigned int time;
     std::thread th;
+    std::mutex mtx;
+    std::condition_variable cond;
+    bool paused;
   public:
     TimeBar(unsigned int time_) :time(time_) {  }
     TimeBar() :time(0) {  }
@@ -84,26 +88,53 @@ namespace light::bar
       set(size_, progress_, padding_);
       return *this;
     }
-    TimeBar& start()
+    TimeBar& start(unsigned int pos = 0)
     {
       th = std::thread
-      ([this]
-        {
-          auto begin = std::chrono::steady_clock::now();
-          auto get_time = [&begin]() -> double
-          {
-            std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - begin;
-            return s.count();
-          };
-          auto timestr = ms_to_string(time);
-          while (get_time() < time)
-          {
-            update(get_time() / time,
-              (" " + ms_to_string(get_time()) + "/" + timestr));
-            std::this_thread::sleep_for(std::chrono::milliseconds(800));
-          }
-        });
+          ([this, pos]
+           {
+             double paused_time = 0;
+             auto begin = std::chrono::steady_clock::now() - std::chrono::milliseconds(pos);
+             auto get_time = [&begin, &paused_time]() -> double
+             {
+               std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - begin;
+               return s.count() - paused_time;
+             };
+             auto timestr = ms_to_string(time);
+             double ltime = get_time();
+             while (ltime < time)
+             {
+               if (paused)
+               {
+                 auto b = std::chrono::steady_clock::now();
+                 std::unique_lock<std::mutex> lock(mtx);
+                 cond.wait(lock, [this] {return !paused; });
+                 std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - b;
+                 paused_time += s.count();
+               }
+               update(get_time() / time,
+                      (" " + ms_to_string(get_time()) + "/" + timestr));
+               std::this_thread::sleep_for(std::chrono::milliseconds(800));
+             }
+           });
       th.detach();
+      return *this;
+    }
+    TimeBar& pause()
+    {
+      if (paused) return *this;
+      mtx.lock();
+      paused = true;
+      mtx.unlock();
+      return *this;
+    }
+    TimeBar& go()
+    {
+      if (!paused) return *this;
+      mtx.lock();
+      paused = false;
+      mtx.unlock();
+      cond.notify_all();
       return *this;
     }
     TimeBar& drain()

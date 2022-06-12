@@ -14,6 +14,8 @@ namespace light::music
     virtual std::size_t read(unsigned char* dest, std::size_t n) = 0;
     virtual bool eof() const = 0;
     virtual std::size_t size() const = 0;
+    virtual std::size_t read_size() const = 0;
+    virtual void seek(std::size_t) = 0;
   };
   class File : public Music
   {
@@ -39,6 +41,15 @@ namespace light::music
     std::size_t size() const override
     {
       return file_size;
+    }
+    std::size_t read_size() const override
+    {
+      return file->tellg();
+    }
+    void seek(std::size_t size) override
+    {
+      file->clear();
+      file->seekg(size, std::ios_base::beg);
     }
   };
 }
@@ -90,20 +101,22 @@ namespace light::music
         return;
       next();
     }
+    std::size_t read_size() const override
+    {
+      return readpos;
+    }
+    void seek(std::size_t size) override
+    {
+      while (!eof() && unread_size() < size)
+        next();
+      readpos = buffer.size();
+    }
   private:
     void write(unsigned char* arr, std::size_t n)
     {
       auto temp = buffer.size();
       buffer.resize(buffer.size() + n);
       memcpy(&buffer[temp], arr, n);
-      //free_read();
-    }
-    void free_read()
-    {
-      for (; readpos > 0; readpos--)
-      {
-        buffer.erase(buffer.begin());
-      }
     }
     void next()
     {
