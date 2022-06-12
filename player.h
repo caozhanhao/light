@@ -8,6 +8,7 @@
 #include <random>
 #include <string>
 #include <fstream>
+#include <filesystem>
 namespace light::player
 {
   int randint(int a, int b)
@@ -27,8 +28,8 @@ namespace light::player
       std::function<std::shared_ptr<music::Music>()> get_music_file;
     public:
       Music(const std::string& name_,
-        const std::function<std::shared_ptr<music::Music>()>& file_)
-        : music_name(name_), get_music_file(file_){ }
+            const std::function<std::shared_ptr<music::Music>()>& file_)
+          : music_name(name_), get_music_file(file_){ }
       std::string name() const { return music_name; }
       std::shared_ptr<music::Music> get_file()
       {
@@ -51,6 +52,12 @@ namespace light::player
     }
     Player& enable_cache(const std::string& cachepath = "cache/")
     {
+      std::filesystem::path p(cachepath);
+      if(!(std::filesystem::exists(p) && std::filesystem::is_directory(p)))
+      {
+        throw error::Error(LIGHT_ERROR_LOCATION, __func__,
+                           "No such cache directory '" + cachepath + "'.");
+      }
       cache_path = cachepath;
       cache = true;
       return *this;
@@ -67,14 +74,17 @@ namespace light::player
       audio.with_bar();
       return *this;
     }
-    Player& push_online(const http::Url& url)
+    Player& push_online(const http::Url& url,
+                        const std::string& music_name = "",
+                        const std::string& file_name =
+                        std::to_string(std::chrono::system_clock::now()
+                                           .time_since_epoch().count()))
     {
       std::function<std::shared_ptr<music::Music>()> func;
       if (cache)
       {
         std::string filename = cache_path + "/"
-          + std::to_string(std::chrono::system_clock::now()
-            .time_since_epoch().count());
+                               + file_name;
         func = [this, url, filename]() -> std::shared_ptr<music::Music>
         {
           http::Http res(url);
@@ -82,7 +92,7 @@ namespace light::player
           auto t = res.response.file();
           if (res.response_code != 200 || !t->is_open())
             throw error::Error(LIGHT_ERROR_LOCATION, __func__,
-              "Download music failed");
+                               "Download music failed");
           t->clear();
           t->seekg(std::ios_base::beg);
           return std::make_shared<music::File>(music::File(t));
@@ -96,36 +106,41 @@ namespace light::player
           std::shared_ptr<music::Buffer> buf;
           std::condition_variable cond;
           std::thread th(
-            [&]()
-            {
-              http::Http res(url);
-              res.set_buffer();
-              mtx.lock();
-              buf = res.response.buffer();
-              mtx.unlock();
-              cond.notify_all();
-              res.get();
-            });
+              [&]()
+              {
+                http::Http res(url);
+                res.set_buffer();
+                mtx.lock();
+                buf = res.response.buffer();
+                mtx.unlock();
+                cond.notify_all();
+                res.get();
+              });
           th.detach();
           std::unique_lock<std::mutex> lock(mtx);
           cond.wait(lock, [&] {return buf != nullptr; });
           return buf;
         };
       }
-      music_list.emplace_back(Music(url.get(), func));
+      music_list.emplace_back(Music(music_name, func));
       return *this;
     }
-    Player& push_local(const std::string& filename)
+    Player& push_local(const std::string& filename, const std::string& music_name = "")
     {
       auto func = [filename, this]() -> std::shared_ptr<music::Music>
       {
+        if(!std::filesystem::exists(filename))
+        {
+          throw error::Error(LIGHT_ERROR_LOCATION, __func__,
+                             "No such file '" + filename + "'.");
+        }
         auto f = std::make_shared<std::fstream>(std::fstream(filename,
-          std::ios_base::in | std::ios_base::binary));
+                                                             std::ios_base::in | std::ios_base::binary));
         if(!f->is_open())
           throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
         return std::make_shared<music::File>(music::File(f));
       };
-      music_list.emplace_back(Music(filename, func));
+      music_list.emplace_back(Music((music_name != "" ? music_name : filename), func));
       return *this;
     }
     Player& pop()
@@ -133,8 +148,9 @@ namespace light::player
       music_list.pop_front();
       return *this;
     }
-    Player& ordered_play(const int num = 1)
+    Player& ordered_play(int num = -1)
     {
+      if(num == -1) num = music_list.size();
       for (auto i = 0; i < num; i++)
       {
         check_list();
@@ -145,19 +161,20 @@ namespace light::player
       }
       return *this;
     }
-    Player& random_play(const int num = 1)
+    Player& random_play(int num = -1)
     {
+      if(num == -1) num = music_list.size();
       for (auto i = 0; i < num; i++)
       {
         check_list();
         auto& music = music_list[randint(0, music_list.size() - 1)];
         if (bar) std::cout << music.name();
-        audio.play(music.get_file()); 
+        audio.play(music.get_file());
         next_line();
       }
       return *this;
     }
-    Player& repeated_play(const int num = -1)
+    Player& repeated_play(int num = -1)
     {
       check_list();
       if (num == -1)
@@ -168,7 +185,6 @@ namespace light::player
           audio.play(music_list[index].get_file());
           next_line();
         }
-        index++;
       }
       else
       {
