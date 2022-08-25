@@ -1,4 +1,18 @@
-#pragma once
+//   Copyright 2022 light - caozhanhao
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS,
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//   See the License for the specific language governing permissions and
+//   limitations under the License.
+#ifndef LIGHT_BAR_HPP
+#define LIGHT_BAR_HPP
 #include <string>
 #include <iostream>
 #include <thread>
@@ -19,14 +33,16 @@ namespace light::bar
     Bar(std::size_t size_ = 36, char progress_ = '>', char padding_ = ' ')
         : padding(padding_), progress(progress_), size(size_), finished_size(0),
           last_addition_size(0), first(true) {}
-    Bar& set(std::size_t size_, char progress_, char padding_)
+    
+    Bar &set(std::size_t size_, char progress_, char padding_)
     {
       size = size_;
       progress = progress_;
       padding = padding_;
       return *this;
     }
-    Bar& update(double achieved_ratio, const std::string addition = "")
+    
+    Bar &update(double achieved_ratio, const std::string addition = "")
     {
       if (first)
       {
@@ -53,8 +69,9 @@ namespace light::bar
       }
       return *this;
     }
+  
   private:
-    std::string add(const std::string& addition)
+    std::string add(const std::string &addition)
     {
       std::string opt;
       if (addition.size() < last_addition_size)
@@ -63,6 +80,7 @@ namespace light::bar
       return addition + opt;
     };
   };
+  
   std::string ms_to_string(const unsigned int time)
   {
     int minutes = time / 60000;
@@ -71,6 +89,7 @@ namespace light::bar
     std::string s = seconds > 9 ? std::to_string(seconds) : "0" + std::to_string(seconds);
     return m + ":" + s;
   };
+  
   class TimeBar : private Bar
   {
   private:
@@ -80,15 +99,23 @@ namespace light::bar
     std::condition_variable cond;
     bool paused;
   public:
-    TimeBar(unsigned int time_) :time(time_) {  }
-    TimeBar() :time(0) {  }
-    TimeBar& set_time(unsigned int time_) { time = time_; return *this; }
-    TimeBar& set(std::size_t size_, char progress_, char padding_)
+    TimeBar(unsigned int time_) : time(time_) {}
+    
+    TimeBar() : time(0) {}
+    
+    TimeBar &set_time(unsigned int time_)
+    {
+      time = time_;
+      return *this;
+    }
+    
+    TimeBar &set(std::size_t size_, char progress_, char padding_)
     {
       set(size_, progress_, padding_);
       return *this;
     }
-    TimeBar& start(unsigned int pos = 0)
+    
+    TimeBar &start(unsigned int pos = 0)
     {
       th = std::thread
           ([this, pos]
@@ -108,7 +135,7 @@ namespace light::bar
                {
                  auto b = std::chrono::steady_clock::now();
                  std::unique_lock<std::mutex> lock(mtx);
-                 cond.wait(lock, [this] {return !paused; });
+                 cond.wait(lock, [this] { return !paused; });
                  std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - b;
                  paused_time += s.count();
                }
@@ -120,7 +147,8 @@ namespace light::bar
       th.detach();
       return *this;
     }
-    TimeBar& pause()
+    
+    TimeBar &pause()
     {
       if (paused) return *this;
       mtx.lock();
@@ -128,7 +156,8 @@ namespace light::bar
       mtx.unlock();
       return *this;
     }
-    TimeBar& go()
+    
+    TimeBar &go()
     {
       if (!paused) return *this;
       mtx.lock();
@@ -137,7 +166,8 @@ namespace light::bar
       cond.notify_all();
       return *this;
     }
-    TimeBar& drain()
+    
+    TimeBar &drain()
     {
       if (th.joinable())
         th.join();
@@ -145,3 +175,4 @@ namespace light::bar
     }
   };
 }
+#endif

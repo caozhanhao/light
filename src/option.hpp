@@ -1,6 +1,19 @@
-#pragma once
-
-#include "error.h"
+//   Copyright 2022 light - caozhanhao
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS,
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//   See the License for the specific language governing permissions and
+//   limitations under the License.
+#ifndef LIGHT_OPTION_HPP
+#define LIGHT_OPTION_HPP
+#include "error.hpp"
 
 #include <vector>
 #include <functional>
@@ -24,10 +37,12 @@ namespace light::option
       std::string arg;
       std::vector<std::string> values;
     public:
-      Token(const std::string& arg_, const std::initializer_list<std::string>& values_ = {})
-        : arg(arg_), values(values_) {  }
-      void add(const std::string& v) { values.emplace_back(v); }
+      Token(const std::string &arg_, const std::initializer_list<std::string> &values_ = {})
+          : arg(arg_), values(values_) {}
+      
+      void add(const std::string &v) { values.emplace_back(v); }
     };
+    
     class Packed
     {
     private:
@@ -35,46 +50,53 @@ namespace light::option
     public:
       int priority;
     public:
-      Packed(const std::function<void()>& packed, int priority_)
-        : packed(packed), priority(priority_) {}
+      Packed(const std::function<void()> &packed, int priority_)
+          : packed(packed), priority(priority_) {}
+      
       void operator()()
       {
         packed();
       }
     };
+    
     class Callback
     {
     private:
       CallbackType func;
       int priority;
     public:
-      Callback(const CallbackType& func_, int priority_)
-        : func(func_), priority(priority_) {}
-      Callback() : func([](CallbackArgType) {}), priority(-1) {  }
+      Callback(const CallbackType &func_, int priority_)
+          : func(func_), priority(priority_) {}
+      
+      Callback() : func([](CallbackArgType) {}), priority(-1) {}
+      
       Packed pack(CallbackArgType arg)
       {
         return Packed(std::bind(func, arg), priority);
       }
     };
+  
   private:
     std::vector<Token> tokens;
     std::map<const std::string, const std::string> alias;
     std::map<const std::string, Callback> funcs;
     std::vector<Packed> tasks;
     int argc;
-    char** argv;
+    char **argv;
     bool parsed;
   public:
-    Option(int argc_, char** argv_) 
-      : argc(argc_), argv(argv_), parsed(false) { }
-    Option& add(const std::string& arg, const CallbackType& func, int priority = -1)
+    Option(int argc_, char **argv_)
+        : argc(argc_), argv(argv_), parsed(false) {}
+    
+    Option &add(const std::string &arg, const CallbackType &func, int priority = -1)
     {
       if (parsed)
         throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not add() after parse().");
       funcs.insert(std::make_pair(arg, Callback(func, priority)));
       return *this;
     }
-    Option& add(const std::string& arg, const std::string& alias_, const CallbackType& func, int priority = -1)
+    
+    Option &add(const std::string &arg, const std::string &alias_, const CallbackType &func, int priority = -1)
     {
       if (parsed)
         throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not add() after parse().");
@@ -82,15 +104,17 @@ namespace light::option
       alias.insert(std::make_pair(alias_, arg));
       return *this;
     }
-    Option& run()
+    
+    Option &run()
     {
       if (!parsed)
         throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Option has not parsed.");
-      for (auto& r : tasks)
+      for (auto &r: tasks)
         r();
       return *this;
     }
-    Option& parse()
+    
+    Option &parse()
     {
       tokens.emplace_back(Token(argv[0]));
       for (int i = 1; i < argc; i++)
@@ -107,8 +131,8 @@ namespace light::option
       }
       funcs.insert(std::make_pair(argv[0], Callback()));
       parse_multi();
-
-      for (auto& r : tokens)
+      
+      for (auto &r: tokens)
       {
         if (funcs.find(r.arg) != funcs.cend())
         {
@@ -122,11 +146,13 @@ namespace light::option
         }
         std::cout << "Unrecognized option '" << r.arg << "'." << std::endl;
       }
-      std::sort(tasks.begin(), tasks.end(), [](const Packed& p1, const Packed& p2) {return p1.priority > p2.priority; });
-
+      std::sort(tasks.begin(), tasks.end(),
+                [](const Packed &p1, const Packed &p2) { return p1.priority > p2.priority; });
+      
       parsed = true;
       return *this;
     }
+  
   private:
     void parse_multi()
     {
@@ -137,7 +163,7 @@ namespace light::option
           for (std::size_t i = 0; i < it->arg.size(); i++)
           {
             if (i < it->values.size())
-              it = 1 + tokens.insert(it, Token(std::string(1, it->arg[i]), { it->values[i] }));
+              it = 1 + tokens.insert(it, Token(std::string(1, it->arg[i]), {it->values[i]}));
             else
               it = 1 + tokens.insert(it, Token(std::string(1, it->arg[i])));
           }
@@ -145,11 +171,12 @@ namespace light::option
         }
       }
     }
-    bool is_multi(const std::string& str)
+    
+    bool is_multi(const std::string &str)
     {
       if (funcs.find(str) != funcs.cend() || alias.find(str) != alias.cend())
         return false;
-      for (auto& r : str)
+      for (auto &r: str)
       {
         if (funcs.find(std::string(1, r)) == funcs.cend() && alias.find(std::string(1, r)) == alias.cend())
           return false;
@@ -158,3 +185,4 @@ namespace light::option
     }
   };
 }
+#endif
