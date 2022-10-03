@@ -124,19 +124,20 @@ int main(int argc, char* argv[])
     [](Option::CallbackArgType args)
     {
       std::cout <<
-        R"(Light
-Usage: light[options...] <arguments>
--s, --server        <PulseAudio server> Set PulseAudio server. 
-                (default: PULSE_SERVER)                    
--i, --local-input   <music paths>       Push local musics into list.
--n, --online-input  <urls>              Push online musics into list.
--c, --cache         <cache path(opt)>   Cache the music before 
-                    (default:cache/)    playing online music.
--o, --ordered-play  <num(opt)>          Play songs from list in order.
--l, --loop-play     <times(opt)>        Play a song from list repeatedly.
--r, --random-play   <num(opt)>          Play random songs from list.
-    --no-bar                            With no bar.
--h, --help                              Get this help.)" << std::endl;
+                "light - caozhanhao\n"
+                "Usage: light[options...] <arguments>\n"
+                "-s, --server        <PulseAudio server> Set PulseAudio server.\n"
+                "                    (default: PULSE_SERVER)\n"
+                "-i, --local-input   <music paths>       Push local musics into list.\n"
+                "-n, --online-input  <urls>              Push online musics into list.\n"
+                "-c, --cache         <cache path(opt)>   Cache the music before\n"
+                "                    (default:cache/)    playing online music.\n"
+                "-o, --ordered-play  <num(opt)>          Play songs from list in order.\n"
+                "-l, --loop-play     <times(opt)>        Play a song from list repeatedly.\n"
+                "-r, --random-play   <num(opt)>          Play random songs from list.\n"
+                "--no-bar                                With no bar.\n"
+                "-h, --help                              Get this help.\n"
+                << std::endl;
     });
   option.parse();
   option.run();
