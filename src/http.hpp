@@ -15,7 +15,7 @@
 #define LIGHT_HTTP_HPP
 #include "bar.hpp"
 #include "error.hpp"
-#include "music.hpp"
+#include "stream.hpp"
 #include "curl/curl.h"
 #include <memory>
 #include <string>
@@ -32,7 +32,7 @@ namespace light::http
     std::variant<int,
         std::shared_ptr<std::string>,
         std::shared_ptr<std::fstream>,
-        std::shared_ptr<music::Buffer>> value;//int EMPTY
+        std::shared_ptr<stream::NetInputStream>> value;//int EMPTY
   public:
     Response() : value(0) {}
     
@@ -62,8 +62,8 @@ namespace light::http
     void set_buffer()
     {
       value.emplace
-          <std::shared_ptr<music::Buffer>>
-          (std::make_shared<music::Buffer>
+          <std::shared_ptr<stream::NetInputStream>>
+          (std::make_shared<stream::NetInputStream>
                ());
     }
     
@@ -73,7 +73,7 @@ namespace light::http
     
     std::shared_ptr<std::fstream> file() { return std::get<2>(value); }
     
-    std::shared_ptr<music::Buffer> buffer()
+    std::shared_ptr<stream::NetInputStream> buffer()
     {
       return std::get<3>(value);
     }
@@ -84,234 +84,6 @@ namespace light::http
     }
     
     bool empty() { return value.index() == 0; }
-  };
-  
-  class Url
-  {
-  private:
-    class ParsedUrl
-    {
-    public:
-      std::vector<std::pair<std::string, std::string>> params;
-      std::vector<std::string> paths;
-      std::vector<std::string> domain;
-      std::string protocol;
-      int port;
-    public:
-      ParsedUrl() : port(-1) {}
-    
-    private:
-      void str_encode(std::string &v)
-      {
-        CURL *curl = curl_easy_init();
-        char *output = curl_easy_escape(curl, v.c_str(), v.size());
-        v = output;
-        curl_free(output);
-        curl_easy_cleanup(curl);
-      }
-    
-    public:
-      void set_protocol(const std::string &v) { protocol = v; }
-      
-      void set_port(int v) { port = v; }
-      
-      void add_param(const std::pair<std::string, std::string> &v)
-      {
-        auto s = v;
-        str_encode(s.first);
-        str_encode(s.second);
-        params.emplace_back(s);
-      }
-      
-      void add_path(const std::string &v)
-      {
-        auto s = v;
-        str_encode(s);
-        paths.emplace_back(s);
-      }
-      
-      void add_domain(const std::string &v)
-      {
-        auto s = v;
-        str_encode(s);
-        domain.emplace_back(s);
-      }
-    };
-  
-  private:
-    ParsedUrl url;
-  public:
-    Url(const std::string &url_)
-    {
-      parse(url_);
-    }
-    
-    Url(const std::string &url_,
-        const std::initializer_list<std::pair<std::string, std::string>> &il)
-    {
-      parse(url_);
-      add_param(il);
-    }
-    
-    Url(const std::string &url_,
-        const std::initializer_list<std::string> &il)
-    {
-      parse(url_);
-      add_path(il);
-    }
-    
-    Url(const std::string &url_,
-        const std::initializer_list<std::string> &il1,
-        const std::initializer_list<std::pair<std::string, std::string>> &il2)
-    {
-      parse(url_);
-      add_path(il1);
-      add_param(il2);
-    }
-    
-    std::string get() const { return *total(); }
-    
-    Url &add_param(const std::initializer_list<std::pair<std::string, std::string>> &il)
-    {
-      for (auto &r: il)
-        url.add_param(r);
-      return *this;
-    }
-    
-    Url &add_path(const std::initializer_list<std::string> &il)
-    {
-      for (auto &r: il)
-        url.add_path(r);
-      return *this;
-    }
-  
-  private:
-    void parse(const std::string &unparsed_url)
-    {
-      auto it = unparsed_url.cbegin();
-      auto check = [this, &unparsed_url]
-          (const std::string::const_iterator &it) -> bool { return it < unparsed_url.cend(); };
-      std::string temp = "";
-      while (check(it) && isalpha(*it))
-      {
-        temp += *it;
-        it++;
-      }
-      url.set_protocol(temp);
-      while (check(it) && !isalpha(*it) && !isalnum(*it))
-        it++;
-      auto add_to_domain = [this, check, &it]()
-      {
-        std::string temp;
-        while (check(it) && *it != '.' && *it != ':' && *it != '/')
-        {
-          temp += *it;
-          it++;
-        }
-        url.add_domain(temp);
-      };
-      while (check(it) && *it != '/' && *it != ':')
-      {
-        if (*it == '.') it++;
-        add_to_domain();
-      }
-      if (!check(it)) return;//no other, just return
-      if (*it == ':')
-      {
-        it++;
-        std::string temp;
-        while (check(it) && isalnum(*it))
-        {
-          temp += *it;
-          it++;
-        }
-        url.set_port(std::stoi(temp));
-      }
-      if (!check(it)) return;//no paths, just return
-      auto add_to_paths = [this, check, &it]()
-      {
-        std::string temp;
-        while (check(it) && *it != '/' && *it != '?')
-        {
-          temp += *it;
-          it++;
-        }
-        url.add_path(temp);
-      };
-      while (check(it) && *it != '?')
-      {
-        if (*it == '/') it++;
-        add_to_paths();
-      }
-      if (!check(it)) return;//no params, just return
-      it++;//eat '?'
-      auto add_to_params = [this, check](std::string::const_iterator &it)
-      {
-        std::string key;
-        std::string value;
-        while (check(it) && *it != '&')
-        {
-          while (check(it) && *it != '=')
-          {
-            key += *it;
-            it++;
-          }
-          it++;
-          while (check(it) && *it != '&')
-          {
-            value += *it;
-            it++;
-          }
-        }
-        url.add_param({key, value});
-      };
-      while (check(it))
-      {
-        if (*it == '&') it++;;
-        add_to_params(it);
-      }
-    }
-    
-    std::unique_ptr<std::string> total() const
-    {
-      std::unique_ptr<std::string> ret(new std::string(""));
-      *ret += url.protocol;
-      *ret += "://";
-      for (auto &r: url.domain)
-      {
-        *ret += r;
-        *ret += '.';
-      }
-      ret->pop_back();
-      if (url.port != -1)
-      {
-        *ret += ":";
-        *ret += std::to_string(url.port);
-      }
-      if (!url.paths.empty())
-      {
-        *ret += "/";
-        for (auto &r: url.paths)
-        {
-          *ret += r;
-          *ret += '/';
-        }
-        ret->pop_back();
-      }
-      if (!url.params.empty())
-      {
-        *ret += "?";
-        for (auto &r: url.params)
-        {
-          *ret += r.first;
-          *ret += '=';
-          *ret += r.second;
-          *ret += '&';
-        }
-        ret->pop_back();
-      }
-      return ret;
-    }
   };
   
   struct ProcessBarData
@@ -392,19 +164,19 @@ namespace light::http
     {
       init();
     }
-    
-    Http(const Url &url_) : response_code(-1), curl(curl_easy_init())
+  
+    Http(const std::string &url_) : response_code(-1), curl(curl_easy_init())
     {
       init();
       set_url(url_);
     }
     
     Http(const Http &http) = delete;
-    
-    Http &set_url(const Url &url_)
+  
+    Http &set_url(const std::string &url_)
     {
       auto url = url_;
-      curl_easy_setopt(curl, CURLOPT_URL, url.get().c_str());
+      curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
       return *this;
     }
     

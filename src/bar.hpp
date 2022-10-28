@@ -13,11 +13,13 @@
 //   limitations under the License.
 #ifndef LIGHT_BAR_HPP
 #define LIGHT_BAR_HPP
+#include "decoder.hpp"
 #include <string>
 #include <iostream>
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+#include <future>
 namespace light::bar
 {
   class Bar
@@ -50,7 +52,8 @@ namespace light::bar
                   << add(addition) << std::flush;
         first = false;
       }
-      if (finished_size < size && size * achieved_ratio - finished_size > 0.5)
+  
+      while (finished_size < size && size * achieved_ratio - finished_size > 0.5)
       {
         finished_size++;
         std::string d(last_addition_size + size + 2, '\b');
@@ -61,12 +64,9 @@ namespace light::bar
         output += add(addition);
         std::cout << d << output << std::flush;
       }
-      else
-      {
-        std::string d(last_addition_size, '\b');
-        auto p = add(addition);
-        std::cout << d << p << std::flush;
-      }
+      std::string d(last_addition_size, '\b');
+      auto p = add(addition);
+      std::cout << d << p << std::flush;
       return *this;
     }
   
@@ -93,33 +93,48 @@ namespace light::bar
   class TimeBar : private Bar
   {
   private:
+    std::shared_ptr<std::promise<decoder::MusicInfo>> info;
     unsigned int time;
     std::thread th;
     std::mutex mtx;
     std::condition_variable cond;
     bool paused;
   public:
-    TimeBar(unsigned int time_) : time(time_) {}
-    
-    TimeBar() : time(0) {}
-    
-    TimeBar &set_time(unsigned int time_)
-    {
-      time = time_;
-      return *this;
-    }
-    
+    TimeBar(unsigned int time_) : time(time_), paused(false) {}
+  
+    TimeBar() : time(0), paused(false) {}
+  
+    ~TimeBar() { drain(); }
+  
     TimeBar &set(std::size_t size_, char progress_, char padding_)
     {
       set(size_, progress_, padding_);
       return *this;
     }
-    
+  
+    TimeBar &set_time(unsigned int time_)
+    {
+      time = time_;
+      return *this;
+    }
+  
+    TimeBar &set_info(std::shared_ptr<std::promise<decoder::MusicInfo>> info_)
+    {
+      info = info_;
+      return *this;
+    }
+  
     TimeBar &start(unsigned int pos = 0)
     {
       th = std::thread
           ([this, pos]
            {
+             if (info != nullptr)
+             {
+               time = info->get_future().get().time;
+               info = nullptr;
+             }
+          
              double paused_time = 0;
              auto begin = std::chrono::steady_clock::now() - std::chrono::milliseconds(pos);
              auto get_time = [&begin, &paused_time]() -> double
@@ -141,13 +156,13 @@ namespace light::bar
                }
                update(get_time() / time,
                       (" " + ms_to_string(get_time()) + "/" + timestr));
-               std::this_thread::sleep_for(std::chrono::milliseconds(800));
+               if (get_time() >= time) return;
+               std::this_thread::sleep_for(std::chrono::milliseconds(time / 200));
              }
            });
-      th.detach();
       return *this;
     }
-    
+  
     TimeBar &pause()
     {
       if (paused) return *this;
@@ -156,7 +171,12 @@ namespace light::bar
       mtx.unlock();
       return *this;
     }
-    
+  
+    bool &is_paused()
+    {
+      return paused;
+    }
+  
     TimeBar &go()
     {
       if (!paused) return *this;

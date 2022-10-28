@@ -13,9 +13,13 @@
 //   limitations under the License.
 #ifndef LIGHT_LIGHT_HPP
 #define LIGHT_LIGHT_HPP
+
 #include "error.hpp"
 #include "option.hpp"
 #include "player.hpp"
+#include "decoder.hpp"
+#include "stream.hpp"
+#include "term.hpp"
 
 namespace light
 {
