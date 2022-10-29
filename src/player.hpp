@@ -110,6 +110,11 @@ namespace light::player
       return decoder.is_paused();
     }
   
+    bool is_with_bar()
+    {
+      return bar;
+    }
+  
     Player &pause()
     {
       timebar.pause();
@@ -205,7 +210,7 @@ namespace light::player
       return *this;
     }
   
-    Player &output(int num = -1, int pos = 0)
+    Player &output(int num = -1)
     {
       if (num == -1) num = music_list.size();
       for (auto i = 0; i < num; i++)
@@ -231,20 +236,20 @@ namespace light::player
               term::mvoutput({0, ypos++}, std::to_string(i + 1) + "| " + music_list[i].name());
             }
           }
-          ypos++;
           term::mvoutput({0, term::get_height() - 3}, "Playing: ");
           auto name = music_list[index].name();
           term::mvoutput({0, term::get_height() - 2}, name);
           timebar.set_pos({name.size() + 1, term::get_height() - 2});
         }
-        play(music_list[index].get_file(), pos);
+        play(music_list[index].get_file());
         index++;
+        if (!light_is_running) return *this;
       }
       return *this;
     }
 
   private:
-    void play(const std::shared_ptr<stream::InputStream> &in, int pos)
+    void play(const std::shared_ptr<stream::InputStream> &in)
     {
       std::shared_ptr<std::promise<utils::MusicInfo>> info{std::make_shared<std::promise<utils::MusicInfo>>()};
       if (bar)

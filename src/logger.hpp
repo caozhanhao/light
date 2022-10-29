@@ -14,6 +14,7 @@
 #ifndef LIGHT_LOGGER_HPP
 #define LIGHT_LOGGER_HPP
 
+#include "utils.hpp"
 #include "term.hpp"
 #include <stdexcept>
 #include <string>
@@ -29,7 +30,8 @@ namespace light::logger
   {
   public:
     Error(std::string location, std::string func_name, std::string details)
-        : logic_error("In File: " + location + ":" + func_name + "(): \n" + details) {}
+        : logic_error(utils::colorify("Error", utils::Color::RED) +
+                      "In File: " + location + ":" + func_name + "(): \n" + details) {}
   };
   
   void logger_output(const std::string &str)

@@ -13,9 +13,7 @@
 //   limitations under the License.
 #ifndef LIGHT_UTILS_HPP
 #define LIGHT_UTILS_HPP
-
-#include "logger.hpp"
-
+#include <string>
 namespace light::utils
 {
   struct MusicInfo
@@ -50,9 +48,8 @@ namespace light::utils
         return "\033[37m" + str + "\033[0m";
       case Color::RED:
         return "\033[31m" + str + "\033[0m";
-      default:
-        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Unexpected color");
     }
+    return str;
   }
 }
 #endif

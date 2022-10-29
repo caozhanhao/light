@@ -241,6 +241,7 @@ namespace light::stream
     void set_audio_server(const std::string &server)
     {
       audio.set_server(server);
+      audio.init();
     }
     
     void set_samplerate(unsigned int rate)

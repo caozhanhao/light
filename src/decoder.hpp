@@ -116,8 +116,8 @@ namespace light::decoder
           .channels = 2,
           .size = d->input_stream->size()
       };
-      d->info->set_value(info);
       d->encode_stream->set_info(info);
+      d->info->set_value(info);
       d->info = nullptr;
     }
     if (d->pause)

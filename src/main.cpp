@@ -16,6 +16,7 @@ extern const int LIGHT_AUDIO_READ_BUFFER_SIZE = 65536;
 #include <atomic>
 
 std::atomic<bool> light_is_running = true;
+bool light_output = true;
 
 #include "light.hpp"
 #include <string>
@@ -58,18 +59,18 @@ int main(int argc, char *argv[])
                                    case 'q':
                                      light_is_running = false;
                                      player.go();
-                                     LIGHT_NOTICE("Quitting.");
+                                     if (player.is_with_bar()) LIGHT_NOTICE("Quitting.");
                                      return;
                                    case ' ':
                                      if (player.is_paused())
                                      {
                                        player.go();
-                                       LIGHT_NOTICE("Continue.");
+                                       if (player.is_with_bar()) LIGHT_NOTICE("Continue.");
                                      }
                                      else
                                      {
                                        player.pause();
-                                       LIGHT_NOTICE("Paused.");
+                                       if (player.is_with_bar()) LIGHT_NOTICE("Paused.");
                                      }
                                      break;
                                  }
@@ -137,7 +138,18 @@ int main(int argc, char *argv[])
   option.add("o", "output",
              [&player](Option::CallbackArgType args)
              {
-               player.output();
+               if (args.size() == 0)
+               {
+                 player.output();
+               }
+               else if (args.size() == 1)
+               {
+                 player.output(std::stoi(args[0]));
+               }
+               else
+               {
+                 std::cout << "--output has too many arguments.\n";
+               }
              });
   option.add("no-bar",
              [&player](Option::CallbackArgType args)

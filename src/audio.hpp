@@ -25,11 +25,12 @@ namespace light::audio
     std::string server;
     pa_simple *s;
     pa_sample_spec ss;
+    unsigned int rate;
   public:
-    Audio() : inited(false) {};
-    
+    Audio() : inited(false), rate(0) {};
+  
     Audio(const Audio &b) = delete;
-    
+  
     ~Audio()
     {
       if (s)
@@ -38,12 +39,16 @@ namespace light::audio
         pa_simple_free(s);
       }
     }
-    
-    void set_samplerate(unsigned int rate)
+  
+    void set_samplerate(unsigned int rate_)
     {
-      init({.format = PA_SAMPLE_S16LE,
-               .rate = rate,
-               .channels = 2});
+      if (rate != rate_ || !inited)
+      {
+        rate = rate_;
+        init({.format = PA_SAMPLE_S16LE,
+                 .rate = rate,
+                 .channels = 2});
+      }
     }
     
     void set_server(const std::string &server_) { server = server_; }
@@ -52,12 +57,13 @@ namespace light::audio
         .rate = 44100,
         .channels = 2})
     {
+      rate = ss.rate;
       if (server == "")
       {
-        auto s = getenv("PULSE_SERVER");
-        if (s)
+        auto server_env = getenv("PULSE_SERVER");
+        if (server_env)
         {
-          server = s;
+          server = server_env;
         }
         else
         {
@@ -65,9 +71,7 @@ namespace light::audio
         }
       }
       if (s)
-      {
         pa_simple_free(s);
-      }
       int err;
       s = pa_simple_new(server.c_str(),
                         "pulseaudio", PA_STREAM_PLAYBACK,
