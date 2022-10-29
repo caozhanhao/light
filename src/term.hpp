@@ -21,6 +21,7 @@
 #include <sys/select.h>
 #include <termios.h>
 
+#include <mutex>
 namespace light::term
 {
   class TermPos
@@ -47,13 +48,10 @@ namespace light::term
     {
       tcgetattr(0, &initial_settings);
       new_settings = initial_settings;
-      new_settings.c_lflag &= ~ICANON;
-      new_settings.c_lflag &= ~ECHO;
-      new_settings.c_lflag &= ~ISIG;
-      new_settings.c_cc[VMIN] = 1;
-      new_settings.c_cc[VTIME] = 0;
+      tcgetattr(0, &new_settings);
+      new_settings.c_lflag &= (~ICANON & ~ECHO);
       tcsetattr(0, TCSANOW, &new_settings);
-      peek_character = -1;
+      setbuf(stdin, NULL);
     }
     
     ~KeyBoard()
@@ -71,7 +69,7 @@ namespace light::term
       nread = read(0, &ch, 1);
       new_settings.c_cc[VMIN] = 1;
       tcsetattr(0, TCSANOW, &new_settings);
-      
+  
       if (nread == 1)
       {
         peek_character = ch;
@@ -82,19 +80,12 @@ namespace light::term
     
     int getch()
     {
-      char ch;
-      
-      if (peek_character != -1)
-      {
-        ch = peek_character;
-        peek_character = -1;
-      }
-      else { read(0, &ch, 1); }
-      return ch;
+      return getchar();
     }
   };
   
   KeyBoard keyboard;
+  std::mutex output_mutex;
   
   int getch()
   {
@@ -104,22 +95,6 @@ namespace light::term
   bool kbhit()
   {
     return keyboard.kbhit();
-  }
-  
-  void move_cursor(const TermPos &pos)
-  {
-    printf("%c[%d;%df", 0x1b, (int) pos.get_y() + 1, (int) pos.get_x() + 1);
-  }
-  
-  void output(const std::string &str)
-  {
-    std::cout << str << std::flush;
-  }
-  
-  void mvoutput(const TermPos &pos, const std::string &str)
-  {
-    move_cursor(pos);
-    output(str);
   }
   
   std::size_t get_height()
@@ -134,6 +109,19 @@ namespace light::term
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
     return w.ws_col;
+  }
+
+  void mvoutput(const TermPos &pos, const std::string &str)
+  {
+    std::lock_guard<std::mutex> lck(output_mutex);
+    printf("%c[%d;%df", 0x1b, (int) pos.get_y() + 1, (int) pos.get_x() + 1);
+    std::cout << str << std::flush;
+  }
+  
+  void mv_xcenter_output(std::size_t y, const std::string &str)
+  {
+    TermPos pos{get_width() / 2 - str.size() / 2, y};
+    mvoutput(pos, str);
   }
   
   void clear()

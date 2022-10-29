@@ -185,24 +185,45 @@ namespace light::stream
     }
     
     void set_size(const std::size_t size_) { total_size = size_; }
-    
+  
     std::condition_variable &get_cond() { return cond; }
-    
+  
     std::mutex &get_mutex() { return mtx; }
-    
+  
     bool &can_next_buffer() { return can_next; }
-    
+  
     void set_eof() { is_end = true; };
+  };
+  
+  enum OutputMode
+  {
+    file, audio
   };
   
   class OutputStream
   {
+  private:
+    OutputMode mode;
   public:
-    OutputStream() = default;
+    OutputStream(OutputMode mode_) : mode(mode_) {}
     
     virtual void write(const void *data, std::size_t bytes) = 0;
     
-    virtual void set_samplerate(unsigned int rate) = 0;
+    OutputMode get_mode() { return mode; }
+  };
+  
+  class FileOutputStream : public OutputStream
+  {
+    std::ofstream fs;
+  public:
+    FileOutputStream(std::string fn) : OutputStream(OutputMode::file), fs(std::move(fn), std::ios::binary) {}
+    
+    void write(const void *data, std::size_t bytes) override
+    {
+      fs.write(static_cast<const char *>(data), bytes);
+    }
+    
+    std::ofstream &native_handle() { return fs; }
   };
   
   class AudioOutputStream : public OutputStream
@@ -210,6 +231,8 @@ namespace light::stream
   private:
     audio::Audio audio;
   public:
+    AudioOutputStream() : OutputStream(OutputMode::audio) {}
+    
     void write(const void *data, std::size_t bytes) override
     {
       audio.write(data, bytes);
@@ -220,7 +243,7 @@ namespace light::stream
       audio.set_server(server);
     }
     
-    void set_samplerate(unsigned int rate) override
+    void set_samplerate(unsigned int rate)
     {
       audio.set_samplerate(rate);
     }

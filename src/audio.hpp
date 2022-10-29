@@ -13,7 +13,7 @@
 //   limitations under the License.
 #ifndef LIGHT_AUDIO_HPP
 #define LIGHT_AUDIO_HPP
-#include "error.hpp"
+#include "logger.hpp"
 #include <pulse/simple.h>
 #include <pulse/error.h>
 namespace light::audio
@@ -61,7 +61,7 @@ namespace light::audio
         }
         else
         {
-          throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not find PULSE_SERVER");
+          throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not find PULSE_SERVER");
         }
       }
       if (s)
@@ -74,9 +74,9 @@ namespace light::audio
                         NULL, "playback", &ss, NULL, NULL, &err);
       if (!s)
       {
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__,
-                           "Error initing PulseAudio: "
-                           + std::string(pa_strerror(err)) + "\n");
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__,
+                            "Error initing PulseAudio: "
+                            + std::string(pa_strerror(err)) + "\n");
       }
       inited = true;
     }
@@ -90,9 +90,9 @@ namespace light::audio
       int err = 0;
       if (pa_simple_write(s, data, bytes, &err) < 0)
       {
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__,
-                           "Error writing PulseAudio: "
-                           + std::string(pa_strerror(err)) + "\n");
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__,
+                            "Error writing PulseAudio: "
+                            + std::string(pa_strerror(err)) + "\n");
       }
     }
   
@@ -107,7 +107,7 @@ namespace light::audio
       }
       else
       {
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not find PULSE_SERVER");
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not find PULSE_SERVER");
       }
     }
   };

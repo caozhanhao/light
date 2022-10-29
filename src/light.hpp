@@ -14,7 +14,7 @@
 #ifndef LIGHT_LIGHT_HPP
 #define LIGHT_LIGHT_HPP
 
-#include "error.hpp"
+#include "logger.hpp"
 #include "option.hpp"
 #include "player.hpp"
 #include "decoder.hpp"
@@ -23,9 +23,10 @@
 
 namespace light
 {
-  using error::Error;
+  using logger::Error;
   using option::Option;
   using player::Player;
+  using decoder::Decoder;
 }
 #endif
 

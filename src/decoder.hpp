@@ -15,8 +15,10 @@
 #define LIGHT_DECODER_HPP
 
 #include "bar.hpp"
+#include "encoder.hpp"
 #include "stream.hpp"
-#include "error.hpp"
+#include "logger.hpp"
+#include "utils.hpp"
 
 #include <mad.h>
 #include <string.h>
@@ -29,15 +31,11 @@
 
 namespace light::decoder
 {
-  struct MusicInfo
-  {
-    unsigned int time;
-  };
   struct Data
   {
-    std::shared_ptr<std::promise<MusicInfo>> info;
+    std::shared_ptr<std::promise<utils::MusicInfo>> info;
     std::shared_ptr<stream::InputStream> input_stream;
-    std::shared_ptr<stream::OutputStream> output_stream;
+    std::shared_ptr<encoder::EncodeStream> encode_stream;
     std::array<unsigned char, LIGHT_AUDIO_READ_BUFFER_SIZE> decoder_buffer;
     
     bool pause;
@@ -81,7 +79,7 @@ namespace light::decoder
         output.emplace_back(sample);
       }
     }
-    d->output_stream->write(&output[0], output.size() * sizeof(short));
+    d->encode_stream->write(&output[0], output.size() * sizeof(short));
     return MAD_FLOW_CONTINUE;
   }
   
@@ -111,13 +109,15 @@ namespace light::decoder
     Data *d = (Data *) data;
     if (d->info != nullptr)
     {
-      d->info->set_value(
-          MusicInfo{
-              .time = static_cast<unsigned int>
-              ((d->input_stream->size() / 8192) * ((8192 * 8) / (header->bitrate / 1000)))
-          }
-      );
-      d->output_stream->set_samplerate(header->samplerate);
+      utils::MusicInfo info{
+          .time = static_cast<unsigned int>((d->input_stream->size() / 8192) * ((8192 * 8) / (header->bitrate / 1000))),
+          .samplerate = header->samplerate,
+          .bitrate = header->bitrate,
+          .channels = 2,
+          .size = d->input_stream->size()
+      };
+      d->info->set_value(info);
+      d->encode_stream->set_info(info);
       d->info = nullptr;
     }
     if (d->pause)
@@ -125,6 +125,7 @@ namespace light::decoder
       std::unique_lock<std::mutex> lock(d->mtx);
       d->cond.wait(lock, [&d] { return !d->pause; });
     }
+    if (!light_is_running) return MAD_FLOW_STOP;
     return MAD_FLOW_CONTINUE;
   }
   
@@ -139,18 +140,13 @@ namespace light::decoder
   {
   private:
     Data data;
-    bool inited;
   public:
-    Decoder() : inited(false) {};
-    
-    Decoder(const Decoder &b) = delete;
-    
     void decode(const std::shared_ptr<stream::InputStream> &in,
-                const std::shared_ptr<stream::OutputStream> &out,
-                const std::shared_ptr<std::promise<MusicInfo>> &info)
+                const std::shared_ptr<encoder::EncodeStream> &encode,
+                const std::shared_ptr<std::promise<utils::MusicInfo>> &info)
     {
       data.input_stream = in;
-      data.output_stream = out;
+      data.encode_stream = encode;
       data.info = info;
       data.pause = false;
       struct mad_decoder decoder;

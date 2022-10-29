@@ -14,7 +14,7 @@
 #ifndef LIGHT_HTTP_HPP
 #define LIGHT_HTTP_HPP
 #include "bar.hpp"
-#include "error.hpp"
+#include "logger.hpp"
 #include "stream.hpp"
 #include "curl/curl.h"
 #include <memory>
@@ -54,7 +54,9 @@ namespace light::http
                         | std::ios_base::in
                         | std::ios_base::binary));
       if (!f->is_open())
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
+      }
       value.emplace<std::shared_ptr<std::fstream>>
           (f);
     }
@@ -214,7 +216,9 @@ namespace light::http
       curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0);
       curl_easy_setopt(curl, CURLOPT_PROGRESSDATA, &process_bar_data);
       if (response.empty())
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not enable the bar before setting response's type.");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not enable the bar before setting response's type.");
+      }
       if (response.is_buffer())
         curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, buffer_progress_callback);
       return *this;
@@ -227,8 +231,10 @@ namespace light::http
       curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
       auto cret = curl_easy_perform(curl);
       if (cret != CURLE_OK)
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__,
-                           "curl_easy_perform() failed: '" + std::string(curl_easy_strerror(cret)) + "'.");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__,
+                            "curl_easy_perform() failed: '" + std::string(curl_easy_strerror(cret)) + "'.");
+      }
       curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
       return *this;
     }
@@ -237,7 +243,9 @@ namespace light::http
     void init()
     {
       if (!curl)
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "curl_easy_init() failed");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "curl_easy_init() failed");
+      }
     }
   };
 }

@@ -17,6 +17,8 @@
 #include "http.hpp"
 #include "stream.hpp"
 #include "decoder.hpp"
+#include "utils.hpp"
+#include "term.hpp"
 #include <memory>
 #include <chrono>
 #include <deque>
@@ -59,7 +61,7 @@ namespace light::player
 
   private:
     decoder::Decoder decoder;
-    std::shared_ptr<stream::OutputStream> out;
+    std::shared_ptr<encoder::EncodeStream> encode;
     std::deque<Music> music_list;
     std::size_t index;
     std::string cache_path;
@@ -67,15 +69,24 @@ namespace light::player
     bool bar;
     bool cache;
   public:
-    Player() : index(0), bar(true), cache(false), out(std::make_shared<stream::AudioOutputStream>()) {}
+    Player() : timebar({0, 0}), index(0), bar(true), cache(false),
+               encode(std::make_shared<encoder::AudioEncodeStream>()) {}
   
     Player &set_audio_server(const std::string &server)
     {
-      auto ptr = std::dynamic_pointer_cast<stream::AudioOutputStream>(out);
+      auto ptr = std::make_shared<stream::AudioOutputStream>();
       ptr->set_audio_server(server);
+      std::dynamic_pointer_cast<encoder::AudioEncodeStream>(encode)->set_out(ptr);
       return *this;
     }
-    
+  
+    Player &output_to_file(std::string name)
+    {
+      encode = std::make_shared<encoder::WavEncodeStream>(std::move(name));
+      no_bar();
+      return *this;
+    }
+  
     Player &enable_cache(const std::string &cachepath = "cache/")
     {
       std::filesystem::path p(cachepath);
@@ -137,8 +148,8 @@ namespace light::player
           auto t = res.response.file();
           if (res.response_code != 200 || !t->is_open())
           {
-            throw error::Error(LIGHT_ERROR_LOCATION, __func__,
-                               "Download music failed");
+            throw logger::Error(LIGHT_ERROR_LOCATION, __func__,
+                                "Download music failed");
           }
           t->clear();
           t->seekg(std::ios_base::beg);
@@ -179,75 +190,54 @@ namespace light::player
       {
         if (!std::filesystem::exists(filename))
         {
-          throw error::Error(LIGHT_ERROR_LOCATION, __func__,
-                             "No such file '" + filename + "'.");
+          throw logger::Error(LIGHT_ERROR_LOCATION, __func__,
+                              "No such file '" + filename + "'.");
         }
         auto f = std::make_shared<std::fstream>(std::fstream(filename,
                                                              std::ios_base::in | std::ios_base::binary));
         if (!f->is_open())
         {
-          throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
+          throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
         }
         return std::make_shared<stream::FileInputStream>(f);
       };
       music_list.emplace_back(Music((music_name != "" ? music_name : filename), func));
       return *this;
     }
-    
-    Player &pop()
-    {
-      music_list.pop_front();
-      return *this;
-    }
-    
-    Player &ordered_play(int num = -1, int pos = 0)
+  
+    Player &output(int num = -1, int pos = 0)
     {
       if (num == -1) num = music_list.size();
       for (auto i = 0; i < num; i++)
       {
         check_list();
-        if (bar) std::cout << music_list[index].name() << std::flush;
+        if (bar)
+        {
+          term::clear();
+          std::size_t ypos = 0;
+          term::mv_xcenter_output(ypos++, "light - A simple music player by caozhanhao");
+          ypos++;
+          term::mvoutput({0, ypos++}, "Music List: ");
+          for (std::size_t i = 0; i < music_list.size(); ++i)
+          {
+            if (i == index)
+            {
+              term::mvoutput({0, ypos++}, std::to_string(i + 1) + "| "
+                                          + utils::colorify(music_list[i].name(), utils::Color::LIGHT_BLUE) +
+                                          " (playing)");
+            }
+            else
+            {
+              term::mvoutput({0, ypos++}, std::to_string(i + 1) + "| " + music_list[i].name());
+            }
+          }
+          ypos++;
+          term::mvoutput({0, term::get_height() - 3}, "Playing: ");
+          auto name = music_list[index].name();
+          term::mvoutput({0, term::get_height() - 2}, name);
+          timebar.set_pos({name.size() + 1, term::get_height() - 2});
+        }
         play(music_list[index].get_file(), pos);
-        next_line();
-        index++;
-      }
-      return *this;
-    }
-    
-    Player &random_play(int num = -1, int pos = 0)
-    {
-      if (num == -1) num = music_list.size();
-      for (auto i = 0; i < num; i++)
-      {
-        check_list();
-        auto &music = music_list[randint(0, music_list.size() - 1)];
-        if (bar) std::cout << music.name() << std::flush;
-        play(music.get_file(), pos);
-        next_line();
-      }
-      return *this;
-    }
-    
-    Player &repeated_play(int num = -1, int pos = 0)
-    {
-      check_list();
-      if (num == -1)
-      {
-        while (true)
-        {
-          if (bar) std::cout << music_list[index].name() << std::flush;
-          play(music_list[index].get_file(), pos);
-          next_line();
-        }
-      }
-      else
-      {
-        for (auto i = 0; i < num; i++)
-        {
-          if (bar) std::cout << music_list[index].name() << std::flush;
-          play(music_list[index].get_file(), pos);
-          next_line();
-        }
         index++;
       }
       return *this;
@@ -256,29 +246,22 @@ namespace light::player
   private:
     void play(const std::shared_ptr<stream::InputStream> &in, int pos)
     {
-      std::shared_ptr<std::promise<decoder::MusicInfo>> info{std::make_shared<std::promise<decoder::MusicInfo>>()};
+      std::shared_ptr<std::promise<utils::MusicInfo>> info{std::make_shared<std::promise<utils::MusicInfo>>()};
       if (bar)
       {
         timebar.set_info(info);
         timebar.start();
       }
-      decoder.decode(in, out, info);
+      decoder.decode(in, encode, info);
       timebar.drain();
-    }
-  
-    void next_line()
-    {
-      if (bar)
-      {
-        std::cout << "\n";
-      }
+      timebar.reset();
     }
   
     void check_list()
     {
       if (index >= music_list.size())
       {
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "music list has no music.");
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "music list has no music.");
       }
     }
   };

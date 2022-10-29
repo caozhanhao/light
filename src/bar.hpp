@@ -13,28 +13,32 @@
 //   limitations under the License.
 #ifndef LIGHT_BAR_HPP
 #define LIGHT_BAR_HPP
-#include "decoder.hpp"
+
+#include "utils.hpp"
+#include "term.hpp"
 #include <string>
 #include <iostream>
 #include <thread>
 #include <condition_variable>
 #include <mutex>
 #include <future>
+
 namespace light::bar
 {
   class Bar
   {
-  private:
+  protected:
     char padding;
     char progress;
     std::size_t size;
     std::size_t finished_size;
     std::size_t last_addition_size;
+    term::TermPos pos;
     bool first;
   public:
-    Bar(std::size_t size_ = 36, char progress_ = '>', char padding_ = ' ')
+    Bar(term::TermPos pos_ = {0, 0}, std::size_t size_ = 36, char progress_ = '>', char padding_ = ' ')
         : padding(padding_), progress(progress_), size(size_), finished_size(0),
-          last_addition_size(0), first(true) {}
+          last_addition_size(0), first(true), pos(pos_) {}
     
     Bar &set(std::size_t size_, char progress_, char padding_)
     {
@@ -48,25 +52,21 @@ namespace light::bar
     {
       if (first)
       {
-        std::cout << "[" << std::string(size, padding) << "]"
-                  << add(addition) << std::flush;
+        term::mvoutput(pos, "[" + std::string(size, padding) + "]" + add(addition));
         first = false;
       }
   
-      while (finished_size < size && size * achieved_ratio - finished_size > 0.5)
+      std::string output;
+      if (finished_size < size)
       {
-        finished_size++;
-        std::string d(last_addition_size + size + 2, '\b');
-        std::string output = "[";
+        finished_size = size * achieved_ratio;
+        output += "[";
         output += std::string(finished_size, progress);
         output += std::string(size - finished_size, padding);
         output += "]";
-        output += add(addition);
-        std::cout << d << output << std::flush;
       }
-      std::string d(last_addition_size, '\b');
-      auto p = add(addition);
-      std::cout << d << p << std::flush;
+      output += add(addition) + std::string(last_addition_size - addition.size() + 1, ' ');
+      term::mvoutput(pos, output);
       return *this;
     }
   
@@ -93,37 +93,49 @@ namespace light::bar
   class TimeBar : private Bar
   {
   private:
-    std::shared_ptr<std::promise<decoder::MusicInfo>> info;
+    std::shared_ptr<std::promise<utils::MusicInfo>> info;
     unsigned int time;
     std::thread th;
     std::mutex mtx;
     std::condition_variable cond;
     bool paused;
   public:
-    TimeBar(unsigned int time_) : time(time_), paused(false) {}
-  
-    TimeBar() : time(0), paused(false) {}
-  
+    TimeBar(term::TermPos pos_) : Bar(pos_), time(0), paused(false) {}
+    
     ~TimeBar() { drain(); }
-  
+    
     TimeBar &set(std::size_t size_, char progress_, char padding_)
     {
       set(size_, progress_, padding_);
       return *this;
     }
-  
+    
+    TimeBar &set_pos(term::TermPos pos_)
+    {
+      pos = pos_;
+      return *this;
+    }
+    
     TimeBar &set_time(unsigned int time_)
     {
       time = time_;
       return *this;
     }
-  
-    TimeBar &set_info(std::shared_ptr<std::promise<decoder::MusicInfo>> info_)
+    
+    TimeBar &reset()
+    {
+      finished_size = 0;
+      last_addition_size = 0;
+      first = true;
+      return *this;
+    }
+    
+    TimeBar &set_info(std::shared_ptr<std::promise<utils::MusicInfo>> info_)
     {
       info = info_;
       return *this;
     }
-  
+    
     TimeBar &start(unsigned int pos = 0)
     {
       th = std::thread
@@ -134,7 +146,7 @@ namespace light::bar
                time = info->get_future().get().time;
                info = nullptr;
              }
-          
+            
              double paused_time = 0;
              auto begin = std::chrono::steady_clock::now() - std::chrono::milliseconds(pos);
              auto get_time = [&begin, &paused_time]() -> double
@@ -157,12 +169,14 @@ namespace light::bar
                update(get_time() / time,
                       (" " + ms_to_string(get_time()) + "/" + timestr));
                if (get_time() >= time) return;
-               std::this_thread::sleep_for(std::chrono::milliseconds(time / 200));
+               std::this_thread::sleep_for(std::chrono::milliseconds(time / 500));
+  
+               if (!light_is_running) return;
              }
            });
       return *this;
     }
-  
+    
     TimeBar &pause()
     {
       if (paused) return *this;
@@ -171,12 +185,12 @@ namespace light::bar
       mtx.unlock();
       return *this;
     }
-  
+    
     bool &is_paused()
     {
       return paused;
     }
-  
+    
     TimeBar &go()
     {
       if (!paused) return *this;

@@ -13,7 +13,7 @@
 //   limitations under the License.
 #ifndef LIGHT_OPTION_HPP
 #define LIGHT_OPTION_HPP
-#include "error.hpp"
+#include "logger.hpp"
 
 #include <vector>
 #include <functional>
@@ -91,7 +91,9 @@ namespace light::option
     Option &add(const std::string &arg, const CallbackType &func, int priority = -1)
     {
       if (parsed)
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not add() after parse().");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not add() after parse().");
+      }
       funcs.insert(std::make_pair(arg, Callback(func, priority)));
       return *this;
     }
@@ -99,7 +101,9 @@ namespace light::option
     Option &add(const std::string &arg, const std::string &alias_, const CallbackType &func, int priority = -1)
     {
       if (parsed)
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Can not add() after parse().");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not add() after parse().");
+      }
       funcs.insert(std::make_pair(arg, Callback(func, priority)));
       alias.insert(std::make_pair(alias_, arg));
       return *this;
@@ -108,7 +112,9 @@ namespace light::option
     Option &run()
     {
       if (!parsed)
-        throw error::Error(LIGHT_ERROR_LOCATION, __func__, "Option has not parsed.");
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Option has not parsed.");
+      }
       for (auto &r: tasks)
         r();
       return *this;

@@ -12,19 +12,36 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 extern const int LIGHT_AUDIO_READ_BUFFER_SIZE = 65536;
+
+#include <atomic>
+
+std::atomic<bool> light_is_running = true;
+
 #include "light.hpp"
 #include <string>
+#include <signal.h>
+
 using namespace std;
 using namespace light;
-bool is_http(const std::string& str)
+
+bool is_http(const std::string &str)
 {
   std::string a = str.substr(0, 7);
-  for (auto& r : a)
+  for (auto &r: a)
+  {
     r = std::tolower(r);
+  }
   return a == "https://" || a == "http://";
 }
-int main(int argc, char* argv[])
+
+static void signal_handle(int sig)
 {
+  light_is_running = false;
+}
+
+int main(int argc, char *argv[])
+{
+  signal(SIGINT, signal_handle);
   Player player;
   Option option(argc, argv);
   option.add(argv[0],
@@ -39,15 +56,20 @@ int main(int argc, char* argv[])
                                  switch (light::term::getch())
                                  {
                                    case 'q':
-                                     exit(0);
+                                     light_is_running = false;
+                                     player.go();
+                                     LIGHT_NOTICE("Quitting.");
+                                     return;
                                    case ' ':
                                      if (player.is_paused())
                                      {
                                        player.go();
+                                       LIGHT_NOTICE("Continue.");
                                      }
                                      else
                                      {
                                        player.pause();
+                                       LIGHT_NOTICE("Paused.");
                                      }
                                      break;
                                  }
@@ -57,14 +79,10 @@ int main(int argc, char* argv[])
                for (auto &r: args)
                {
                  if (is_http(r))
-                 {
                    player.push_online(r);
-                 }
                  else
-                 {
                    player.push_local(r);
-                 }
-                 player.ordered_play();
+                 player.output();
                }
              });
   option.add("s", "server",
@@ -88,7 +106,7 @@ int main(int argc, char* argv[])
                  player.enable_cache(args[0]);
                }
              }, 9);
-  option.add("i", "local-input",
+  option.add("i", "input",
              [&player](Option::CallbackArgType args)
              {
                if (args.size() == 0)
@@ -97,56 +115,29 @@ int main(int argc, char* argv[])
                }
                for (auto &r: args)
                {
-                 player.push_local(r);
+                 if (is_http(r))
+                 {
+                   player.push_online(r);
+                 }
+                 else
+                 {
+                   player.push_local(r);
+                 }
                }
              });
-  option.add("n", "online-input",
+  option.add("f", "file-output",
              [&player](Option::CallbackArgType args)
              {
-               if (args.size() == 0)
+               if (args.size() != 1)
                {
-                 std::cout << "--online-input need at least one argument.\n";
+                 std::cout << "--file-output need exactly one argument.\n";
                }
-               for (auto &r: args)
-               {
-                 player.push_online(r);
-               }
+               player.output_to_file(args[0]);
              });
-  option.add("o", "ordered-play",
+  option.add("o", "output",
              [&player](Option::CallbackArgType args)
              {
-               if (args.size() == 0)
-               {
-                 player.ordered_play();
-               }
-               else if (args.size() == 1)
-               {
-                 player.ordered_play(std::stoi(args[0]));
-               }
-             });
-  option.add("l", "loop-play",
-             [&player](Option::CallbackArgType args)
-             {
-               if (args.size() == 0)
-               {
-                 player.repeated_play();
-               }
-               else if (args.size() == 1)
-               {
-                 player.repeated_play(std::stoi(args[0]));
-               }
-             });
-  option.add("r", "random-play",
-             [&player](Option::CallbackArgType args)
-             {
-               if (args.size() == 0)
-               {
-                 player.random_play();
-               }
-               else if (args.size() == 1)
-               {
-                 player.random_play(std::stoi(args[0]));
-               }
+               player.output();
              });
   option.add("no-bar",
              [&player](Option::CallbackArgType args)
@@ -157,19 +148,31 @@ int main(int argc, char* argv[])
              [](Option::CallbackArgType args)
              {
                std::cout <<
-                         "light - caozhanhao\n"
+                         "light - A simple music player by caozhanhao\n"
                          "Usage: light[options...] <arguments>\n"
                          "-s, --server        <PulseAudio server> Set PulseAudio server.\n"
                          "                    (default: PULSE_SERVER)\n"
-                         "-i, --local-input   <music paths>       Push local musics into list.\n"
-                         "-n, --online-input  <urls>              Push online musics into list.\n"
-                         "-c, --cache         <cache path(opt)>   Cache the music before\n"
+                         "-i, --input         <music urls/paths>  Push local songs into list.\n"
+                         "-c, --cache         <cache path>        Cache the music before\n"
                          "                    (default:cache/)    playing online music.\n"
-                         "-o, --ordered-play  <num(opt)>          Play songs from list in order.\n"
-                         "-l, --loop-play     <times(opt)>        Play a song from list repeatedly.\n"
-                         "-r, --random-play   <num(opt)>          Play random songs from list.\n"
+                         "-o, --output                            Output songs from list in order.\n"
+                         "-f, --file-output   <filename>          Output will be a wav file \n"
+                         "                                        instead of playing\n"
                          "--no-bar                                With no bar.\n"
+                         "--example                               See some examples.\n"
                          "-h, --help                              Get this help.\n"
+                         "\n"
+                         "While light is playing songs, you can use space key to pause or continue.\n"
+                         "Use 'q' or Ctrl-C to quit.\n"
+                         << std::endl;
+             });
+  option.add("example",
+             [](Option::CallbackArgType args)
+             {
+               std::cout <<
+                         "light -i a.mp3 -f a.wav -o            a.mp3 -> a.wav\n"
+                         "light a.mp3 -s xxx.xxx.xxx\n"
+                         "or light -io a.mp3 -s xxx.xxx.xxx     Play a.mp3 in server xxx.xxx.xxx\n"
                          << std::endl;
              });
   option.parse();
