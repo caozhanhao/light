@@ -96,9 +96,7 @@ namespace light::bar
     std::shared_ptr<std::promise<utils::MusicInfo>> info;
     unsigned int time;
     std::thread th;
-    std::mutex mtx;
-    std::condition_variable cond;
-    bool paused;
+    std::atomic<bool> paused;
   public:
     TimeBar(term::TermPos pos_) : Bar(pos_), time(0), paused(false) {}
     
@@ -161,8 +159,10 @@ namespace light::bar
                if (paused)
                {
                  auto b = std::chrono::steady_clock::now();
-                 std::unique_lock<std::mutex> lock(mtx);
-                 cond.wait(lock, [this] { return !paused; });
+                 while (paused)
+                 {
+                   std::this_thread::yield();
+                 }
                  std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - b;
                  paused_time += s.count();
                }
@@ -179,25 +179,13 @@ namespace light::bar
     
     TimeBar &pause()
     {
-      if (paused) return *this;
-      mtx.lock();
       paused = true;
-      mtx.unlock();
       return *this;
-    }
-    
-    bool &is_paused()
-    {
-      return paused;
     }
     
     TimeBar &go()
     {
-      if (!paused) return *this;
-      mtx.lock();
       paused = false;
-      mtx.unlock();
-      cond.notify_all();
       return *this;
     }
     

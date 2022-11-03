@@ -38,9 +38,7 @@ namespace light::decoder
     std::shared_ptr<encoder::EncodeStream> encode_stream;
     std::array<unsigned char, LIGHT_AUDIO_READ_BUFFER_SIZE> decoder_buffer;
     
-    bool pause;
-    std::condition_variable cond;
-    std::mutex mtx;
+    std::atomic<bool> pause;
   };
   
   short scale(mad_fixed_t sample)
@@ -104,7 +102,7 @@ namespace light::decoder
     return MAD_FLOW_CONTINUE;
   }
   
-  enum mad_flow header_func(void *data, struct mad_header const *header)
+  enum mad_flow header(void *data, struct mad_header const *header)
   {
     Data *d = (Data *) data;
     if (d->info != nullptr)
@@ -120,10 +118,9 @@ namespace light::decoder
       d->info->set_value(info);
       d->info = nullptr;
     }
-    if (d->pause)
+    while (d->pause)
     {
-      std::unique_lock<std::mutex> lock(d->mtx);
-      d->cond.wait(lock, [&d] { return !d->pause; });
+      std::this_thread::yield();
     }
     if (!light_is_running) return MAD_FLOW_STOP;
     return MAD_FLOW_CONTINUE;
@@ -150,7 +147,7 @@ namespace light::decoder
       data.info = info;
       data.pause = false;
       struct mad_decoder decoder;
-      mad_decoder_init(&decoder, &data, input, header_func, 0, output, error, 0);
+      mad_decoder_init(&decoder, &data, input, header, 0, output, error, 0);
       mad_decoder_options(&decoder, 0);
       mad_decoder_run(&decoder, MAD_DECODER_MODE_SYNC);
       mad_decoder_finish(&decoder);
@@ -164,18 +161,13 @@ namespace light::decoder
     void pause()
     {
       if (data.pause)return;
-      data.mtx.lock();
       data.pause = true;
-      data.mtx.unlock();
     }
     
     void go()
     {
       if (!data.pause)return;
-      data.mtx.lock();
       data.pause = false;
-      data.mtx.unlock();
-      data.cond.notify_all();
     }
   };
 }

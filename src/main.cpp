@@ -38,6 +38,8 @@ bool is_http(const std::string &str)
 static void signal_handle(int sig)
 {
   light_is_running = false;
+  LIGHT_NOTICE("Quitting.");
+  std::exit(-1);
 }
 
 int main(int argc, char *argv[])
@@ -59,18 +61,18 @@ int main(int argc, char *argv[])
                                    case 'q':
                                      light_is_running = false;
                                      player.go();
-                                     if (player.is_with_bar()) LIGHT_NOTICE("Quitting.");
+                                     LIGHT_NOTICE("Quitting.");
                                      return;
                                    case ' ':
                                      if (player.is_paused())
                                      {
                                        player.go();
-                                       if (player.is_with_bar()) LIGHT_NOTICE("Continue.");
+                                       LIGHT_NOTICE("Continue.");
                                      }
                                      else
                                      {
                                        player.pause();
-                                       if (player.is_with_bar()) LIGHT_NOTICE("Paused.");
+                                       LIGHT_NOTICE("Paused.");
                                      }
                                      break;
                                  }
@@ -151,11 +153,6 @@ int main(int argc, char *argv[])
                  std::cout << "--output has too many arguments.\n";
                }
              });
-  option.add("no-bar",
-             [&player](Option::CallbackArgType args)
-             {
-               player.no_bar();
-             }, 8);
   option.add("h", "help",
              [](Option::CallbackArgType args)
              {

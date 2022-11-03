@@ -70,8 +70,11 @@ namespace light::audio
           throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not find PULSE_SERVER");
         }
       }
+      LIGHT_NOTICE("Initing PulseAudio [with server = '" + server + "'].");
       if (s)
+      {
         pa_simple_free(s);
+      }
       int err;
       s = pa_simple_new(server.c_str(),
                         "pulseaudio", PA_STREAM_PLAYBACK,
@@ -83,8 +86,9 @@ namespace light::audio
                             + std::string(pa_strerror(err)) + "\n");
       }
       inited = true;
+      LIGHT_NOTICE("Connected Successfully.");
     }
-    
+  
     void write(const void *data, std::size_t bytes)
     {
       if (!inited)

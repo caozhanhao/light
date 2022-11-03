@@ -88,43 +88,19 @@ namespace light::http
     bool empty() { return value.index() == 0; }
   };
   
-  struct ProcessBarData
-  {
-    bar::Bar bar;
-    bool percent;
-  };
-  
-  size_t progress_callback(void *userp, double dltotal, double dlnow, double ultotal, double ulnow)
-  {
-    auto pd = (ProcessBarData *) userp;
-    if (dltotal != 0)
-    {
-      if (pd->percent)
-      {
-        std::string percent = " " + std::to_string((dlnow / dltotal) * 100) + "%";
-        pd->bar.update(dlnow / dltotal, percent);
-      }
-      else
-        pd->bar.update(dlnow / dltotal);
-    }
-    return 0;
-  }
-  
-  size_t buffer_no_bar_progress_callback(void *userp, double dltotal, double dlnow, double ultotal, double ulnow)
+  size_t buffer_progress_callback(void *userp, double dltotal, double dlnow, double ultotal, double ulnow)
   {
     if (dltotal == 0) return 0;
     auto pd = (Response *) userp;
     if (pd->buffer()->size() != dltotal)
+    {
       pd->buffer()->set_size(std::size_t(dltotal));
+    }
     if (dlnow == dltotal)
+    {
       pd->buffer()->set_eof();
-    return 0;
-  }
-  
-  size_t buffer_progress_callback(void *userp, double dltotal, double dlnow, double ultotal, double ulnow)
-  {
-    buffer_no_bar_progress_callback(userp, dltotal, dlnow, ultotal, ulnow);
-    progress_callback(userp, dltotal, dlnow, ultotal, ulnow);
+    }
+    //LIGHT_NOTICE("Downloading : " + std::to_string((double(dlnow) / double(dltotal))* 100) + "%");
     return 0;
   }
   
@@ -139,10 +115,7 @@ namespace light::http
   {
     auto &buffer = *((Response *) userp)->buffer();
     buffer.write((unsigned char *) data, size * nmemb);
-    buffer.can_next_buffer() = false;
-    std::unique_lock<std::mutex> lock(buffer.get_mutex());
-    buffer.get_cond().wait(lock,
-                           [&buffer]() { return buffer.can_next_buffer(); });
+    buffer.get_flag() = true;
     return size * nmemb;
   }
   
@@ -160,7 +133,6 @@ namespace light::http
     long int response_code;
   private:
     CURL *curl;
-    ProcessBarData process_bar_data;
   public:
     Http() : response_code(-1), curl(curl_easy_init())
     {
@@ -181,8 +153,8 @@ namespace light::http
       curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
       return *this;
     }
-    
-    Http &set_str()//default
+  
+    Http &set_str()
     {
       response.set_str();
       curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, str_write_callback);
@@ -203,24 +175,9 @@ namespace light::http
       response.set_buffer();
       curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0);
       curl_easy_setopt(curl, CURLOPT_PROGRESSDATA, &response);
-      curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, buffer_no_bar_progress_callback);
+      curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, buffer_progress_callback);
       curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, buffer_write_callback);
       curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-      return *this;
-    }
-    
-    Http &enable_bar(std::size_t size_ = 36, char progress_ = '>', char padding_ = ' ', bool with_percent_ = true)
-    {
-      process_bar_data.percent = with_percent_;
-      process_bar_data.bar.set(size_, progress_, padding_);
-      curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0);
-      curl_easy_setopt(curl, CURLOPT_PROGRESSDATA, &process_bar_data);
-      if (response.empty())
-      {
-        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Can not enable the bar before setting response's type.");
-      }
-      if (response.is_buffer())
-        curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, buffer_progress_callback);
       return *this;
     }
     

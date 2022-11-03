@@ -23,7 +23,7 @@
 #define LIGHT_STRINGFY(x) _LIGHT_STRINGFY(x)
 #define _LIGHT_STRINGFY(x) #x
 #define LIGHT_ERROR_LOCATION  __FILE__ ":" LIGHT_STRINGFY(__LINE__)
-#define LIGHT_NOTICE(msg) light::logger::logger_output(std::string("N: ") + msg);
+#define LIGHT_NOTICE(msg) light::logger::logger_output("[" + light::logger::get_time() + std::string("] N: ") + msg);
 namespace light::logger
 {
   class Error : public std::logic_error

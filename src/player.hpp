@@ -66,10 +66,9 @@ namespace light::player
     std::size_t index;
     std::string cache_path;
     bar::TimeBar timebar;
-    bool bar;
     bool cache;
   public:
-    Player() : timebar({0, 0}), index(0), bar(true), cache(false),
+    Player() : timebar({0, 0}), index(0), cache(false),
                encode(std::make_shared<encoder::AudioEncodeStream>()) {}
   
     Player &set_audio_server(const std::string &server)
@@ -83,7 +82,6 @@ namespace light::player
     Player &output_to_file(std::string name)
     {
       encode = std::make_shared<encoder::WavEncodeStream>(std::move(name));
-      no_bar();
       return *this;
     }
   
@@ -99,20 +97,9 @@ namespace light::player
       return *this;
     };
   
-    Player &no_bar()
-    {
-      bar = false;
-      return *this;
-    }
-  
     bool is_paused()
     {
       return decoder.is_paused();
-    }
-  
-    bool is_with_bar()
-    {
-      return bar;
     }
   
     Player &pause()
@@ -129,14 +116,29 @@ namespace light::player
       return *this;
     }
   
-    Player &with_bar()
+    Player &skip()
     {
-      bar = true;
+      timebar.go();
+      decoder.go();
+      return *this;
+    }
+  
+    Player &rewind()
+    {
+      timebar.go();
+      decoder.go();
+      return *this;
+    }
+  
+    Player &seek()
+    {
+      timebar.go();
+      decoder.go();
       return *this;
     }
   
     Player &push_online(const std::string &url,
-                        const std::string &music_name = "",
+                        const std::string &music_name = "online music",
                         const std::string &file_name =
                         std::to_string(std::chrono::system_clock::now()
                                            .time_since_epoch().count()))
@@ -216,7 +218,7 @@ namespace light::player
       for (auto i = 0; i < num; i++)
       {
         check_list();
-        if (bar)
+        if (encode->get_output()->get_mode() == stream::OutputMode::audio)
         {
           term::clear();
           std::size_t ypos = 0;
@@ -240,8 +242,12 @@ namespace light::player
           auto name = music_list[index].name();
           term::mvoutput({0, term::get_height() - 2}, name);
           timebar.set_pos({name.size() + 1, term::get_height() - 2});
+          play(music_list[index].get_file());
         }
-        play(music_list[index].get_file());
+        else
+        {
+          decoder.decode(music_list[index].get_file(), encode, nullptr);
+        }
         index++;
         if (!light_is_running) return *this;
       }
@@ -252,11 +258,8 @@ namespace light::player
     void play(const std::shared_ptr<stream::InputStream> &in)
     {
       std::shared_ptr<std::promise<utils::MusicInfo>> info{std::make_shared<std::promise<utils::MusicInfo>>()};
-      if (bar)
-      {
-        timebar.set_info(info);
-        timebar.start();
-      }
+      timebar.set_info(info);
+      timebar.start();
       decoder.decode(in, encode, info);
       timebar.drain();
       timebar.reset();

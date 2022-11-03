@@ -80,33 +80,18 @@ namespace light::stream
       file->seekg(size, std::ios_base::beg);
     }
   };
-}
-namespace light::http
-{
-  size_t buffer_no_bar_progress_callback(void *userp, double dltotal, double dlnow, double ultotal, double ulnow);
   
-  std::size_t buffer_write_callback(void *data, size_t size, size_t nmemb, void *userp);
-}
-namespace light::stream
-{
   class NetInputStream : public InputStream
   {
-    friend size_t
-    http::buffer_no_bar_progress_callback(void *userp, double dltotal, double dlnow, double ultotal, double ulnow);
-    
-    friend std::size_t http::buffer_write_callback(void *data, size_t size, size_t nmemb, void *userp);
-  
   private:
-    std::condition_variable cond;
-    std::mutex mtx;
-    bool can_next;
+    std::atomic<bool> written;
     bool is_end;
     std::size_t total_size;
     
     std::vector<unsigned char> buffer;
     std::size_t readpos;
   public:
-    NetInputStream() : can_next(false), is_end(false), readpos(0) {}
+    NetInputStream() : written(false), is_end(false), readpos(0) {}
     
     std::size_t size() const override
     {
@@ -115,84 +100,63 @@ namespace light::stream
     
     bool eof() const override
     {
-      return is_end;
+      return (is_end && unread_size() == 0);
     }
     
     std::size_t read(unsigned char *dest, std::size_t n) override
     {
       while (!eof() && unread_size() < n)
       {
-        next();
+        wait_for_data();
       }
       std::size_t realsize = n;
       if (unread_size() < n)
-      {
         realsize = unread_size();
-      }
       memcpy(dest, buffer.data() + readpos, realsize);
       readpos += realsize;
-      prepare(n);
       return realsize;
-    }
-    
-    void prepare(std::size_t n)
-    {
-      if (eof() || unread_size() >= n)
-      {
-        return;
-      }
-      next();
     }
     
     std::size_t read_size() const override
     {
       return readpos;
     }
-    
+  
     void seek(std::size_t size) override
     {
-      while (!eof() && unread_size() < size)
+      while (!eof() && buffer.size() < size)
       {
-        next();
+        wait_for_data();
       }
-      readpos = buffer.size();
+      readpos = size;
     }
   
-  private:
+    auto &get_flag() { return written; }
+  
+    void set_size(const std::size_t size_) { total_size = size_; }
+  
+    void set_eof() { is_end = true; };
+  
     void write(unsigned char *arr, std::size_t n)
     {
       auto temp = buffer.size();
       buffer.resize(buffer.size() + n);
       memcpy(&buffer[temp], arr, n);
     }
-    
-    void next()
+
+  private:
+    void wait_for_data()
     {
-      mtx.lock();
-      can_next = true;
-      mtx.unlock();
-      cond.notify_all();
+      while (!written)
+      {
+        std::this_thread::yield();
+      }
     }
-    
-    unsigned char *unread_data()
-    {
-      return buffer.data() + readpos;
-    }
-    
+  
     std::size_t unread_size() const
     {
       return buffer.size() - readpos;
     }
-    
-    void set_size(const std::size_t size_) { total_size = size_; }
-  
-    std::condition_variable &get_cond() { return cond; }
-  
-    std::mutex &get_mutex() { return mtx; }
-  
-    bool &can_next_buffer() { return can_next; }
-  
-    void set_eof() { is_end = true; };
   };
   
   enum OutputMode

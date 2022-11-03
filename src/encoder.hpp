@@ -27,12 +27,17 @@ namespace light::encoder
     utils::MusicInfo info;
   public:
     EncodeStream(std::shared_ptr<stream::OutputStream> o) : out(o) {}
-    
+  
     virtual void write(const void *data, std::size_t bytes) = 0;
-    
+  
     virtual void set_info(utils::MusicInfo info_)
     {
       info = info_;
+    }
+  
+    auto get_output()
+    {
+      return out;
     }
   };
   
@@ -66,18 +71,6 @@ namespace light::encoder
       
       WavHeader() {}
 
-//      WavHeader(int channels, int  samplerate, int bitrate, int data_size)
-//      {
-//        riff.file_size = 36 + data_size;
-//        format.formatTag = 1;
-//        format.channels = channels;
-//        format.samples_per_sec = samplerate;
-//        //format.avg_bytes_per_sec = samplerate * channels * bits_per_sample / 8;
-//        format.avg_bytes_per_sec = bitrate;
-//        format.block_align = channels * (bitrate / samplerate / channels);
-//        format.bits_per_sample = 8 * bitrate / samplerate / channels;
-//        data.size = data_size;
-//      }
       WavHeader(int channels, int samplerate, int bits_per_sample, int data_size)
       {
         riff.file_size = 36 + data_size;
@@ -90,19 +83,20 @@ namespace light::encoder
         data.size = data_size;
       }
     };
-    
+  
     std::size_t bitscount;
   public:
-    WavEncodeStream(std::string name) : EncodeStream(std::make_shared<stream::FileOutputStream>(name)) {}
-    
-    WavEncodeStream() : EncodeStream(nullptr) {}
-    
+    WavEncodeStream(std::string name) :
+        EncodeStream(std::make_shared<stream::FileOutputStream>(name)), bitscount(0) {}
+  
+    WavEncodeStream() : EncodeStream(nullptr), bitscount(0) {}
+  
     void write(const void *data, std::size_t bytes)
     {
       out->write(data, bytes);
       bitscount += bytes;
     }
-    
+  
     void set_out(std::shared_ptr<stream::FileOutputStream> a)
     {
       out = a;
@@ -117,10 +111,13 @@ namespace light::encoder
     
     ~WavEncodeStream()
     {
-      WavHeader h(info.channels, info.samplerate, 16, bitscount);
-      auto ptr = std::dynamic_pointer_cast<stream::FileOutputStream>(out);
-      ptr->native_handle().seekp(std::ios::beg);
-      ptr->write(&h, sizeof(WavHeader));
+      if (bitscount != 0)
+      {
+        WavHeader h(info.channels, info.samplerate, 16, bitscount);
+        auto ptr = std::dynamic_pointer_cast<stream::FileOutputStream>(out);
+        ptr->native_handle().seekp(std::ios::beg);
+        ptr->write(&h, sizeof(WavHeader));
+      }
     }
   };
   
