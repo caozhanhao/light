@@ -26,18 +26,35 @@ namespace light::stream
 {
   class InputStream
   {
+  private:
+    struct MP3Header
+    {
+      std::array<char, 3> header;
+      char version;
+      char revision;
+      char flag;
+      std::array<char, 4> size;
+    } header;
+  
+    int total_size = (header.size[0] & 0x7f) * 0x200000
+                     + (header.size[1] & 0x7f) * 0x400 + (header.size[2] & 0x7f) * 0x40 + (header.size[3] & 0x7f);
   public:
     InputStream() = default;
-    
+  
     virtual std::size_t read(unsigned char *dest, std::size_t n) = 0;
-    
+  
+    virtual void ignore(std::size_t n) = 0;
+  
     virtual bool eof() const = 0;
-    
+  
     virtual std::size_t size() const = 0;
-    
+  
     virtual std::size_t read_size() const = 0;
-    
+  
     virtual void seek(std::size_t) = 0;
+  
+    virtual void seek_cur_offset(int offset) = 0;
+  
   };
   
   class FileInputStream : public InputStream
@@ -46,8 +63,24 @@ namespace light::stream
     std::shared_ptr<std::fstream> file;
     std::size_t file_size;
   public:
+    FileInputStream(std::string fn) : file(std::make_shared<std::fstream>(fn))
+    {
+      if (!file->good())
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
+      }
+      file->ignore(std::numeric_limits<std::streamsize>::max());
+      file_size = file->gcount();
+      file->clear();
+      file->seekg(std::ios_base::beg);
+    }
+    
     FileInputStream(std::shared_ptr<std::fstream> f) : file(std::move(f))
     {
+      if (!file->good())
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
+      }
       file->ignore(std::numeric_limits<std::streamsize>::max());
       file_size = file->gcount();
       file->clear();
@@ -59,6 +92,11 @@ namespace light::stream
       return file->read(reinterpret_cast<char *>(dest), n).gcount();
     }
     
+    void ignore(std::size_t n) override
+    {
+      file->ignore(n);
+    }
+    
     bool eof() const override
     {
       return file->eof();
@@ -68,16 +106,28 @@ namespace light::stream
     {
       return file_size;
     }
-    
+  
     std::size_t read_size() const override
     {
       return file->tellg();
     }
-    
+  
     void seek(std::size_t size) override
     {
       file->clear();
       file->seekg(size, std::ios_base::beg);
+    }
+  
+    void seek_cur_offset(int offset) override
+    {
+      if (offset * -1 > file->tellg())
+      {
+        file->seekg(std::ios::beg);
+      }
+      else
+      {
+        file->seekg(offset, std::ios::cur);
+      }
     }
   };
   
@@ -105,18 +155,34 @@ namespace light::stream
     
     std::size_t read(unsigned char *dest, std::size_t n) override
     {
-      while (!eof() && unread_size() < n)
+      while (!is_end && unread_size() < n)
       {
         wait_for_data();
       }
       std::size_t realsize = n;
       if (unread_size() < n)
+      {
         realsize = unread_size();
+      }
       memcpy(dest, buffer.data() + readpos, realsize);
       readpos += realsize;
       return realsize;
     }
-    
+  
+    void ignore(std::size_t n) override
+    {
+      while (!is_end && unread_size() < n)
+      {
+        wait_for_data();
+      }
+      std::size_t realsize = n;
+      if (unread_size() < n)
+      {
+        realsize = unread_size();
+      }
+      readpos += realsize;
+    }
+  
     std::size_t read_size() const override
     {
       return readpos;
@@ -124,11 +190,17 @@ namespace light::stream
   
     void seek(std::size_t size) override
     {
-      while (!eof() && buffer.size() < size)
+      while (!is_end && buffer.size() < size)
       {
         wait_for_data();
       }
       readpos = size;
+    }
+  
+    void seek_cur_offset(int offset) override
+    {
+      if (offset * -1 >= readpos) { readpos = 0; }
+      else { readpos += offset; }
     }
   
     auto &get_flag() { return written; }
@@ -180,11 +252,17 @@ namespace light::stream
   {
     std::ofstream fs;
   public:
-    FileOutputStream(std::string fn) : OutputStream(OutputMode::file), fs(std::move(fn), std::ios::binary) {}
+    FileOutputStream(std::string fn) : OutputStream(OutputMode::file), fs(std::move(fn), std::ios::binary)
+    {
+      if (fs.good())
+      {
+        throw logger::Error(LIGHT_ERROR_LOCATION, __func__, "Open file failed.");
+      }
+    }
     
     void write(const void *data, std::size_t bytes) override
     {
-      fs.write(static_cast<const char *>(data), bytes);
+      fs.write(reinterpret_cast<const char *>(data), bytes);
     }
     
     std::ofstream &native_handle() { return fs; }

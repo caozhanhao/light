@@ -97,8 +97,9 @@ namespace light::bar
     unsigned int time;
     std::thread th;
     std::atomic<bool> paused;
+    std::atomic<double> offset;
   public:
-    TimeBar(term::TermPos pos_) : Bar(pos_), time(0), paused(false) {}
+    TimeBar(term::TermPos pos_) : Bar(pos_), time(0), paused(false), offset(0) {}
     
     ~TimeBar() { drain(); }
     
@@ -144,13 +145,17 @@ namespace light::bar
                time = info->get_future().get().time;
                info = nullptr;
              }
-            
-             double paused_time = 0;
+  
              auto begin = std::chrono::steady_clock::now() - std::chrono::milliseconds(pos);
-             auto get_time = [&begin, &paused_time]() -> double
+             auto get_time = [&begin, this]() -> double
              {
                std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - begin;
-               return s.count() - paused_time;
+               if (offset >= s.count())
+               {
+                 offset = s.count();
+                 return 0;
+               }
+               return s.count() - offset;
              };
              auto timestr = ms_to_string(time);
              double ltime = get_time();
@@ -164,7 +169,7 @@ namespace light::bar
                    std::this_thread::yield();
                  }
                  std::chrono::duration<double, std::milli> s = std::chrono::steady_clock::now() - b;
-                 paused_time += s.count();
+                 offset = offset + s.count();
                }
                update(get_time() / time,
                       (" " + ms_to_string(get_time()) + "/" + timestr));
@@ -188,11 +193,25 @@ namespace light::bar
       paused = false;
       return *this;
     }
-    
+  
     TimeBar &drain()
     {
       if (th.joinable())
+      {
         th.join();
+      }
+      return *this;
+    }
+  
+    TimeBar &rewind()
+    {
+      offset = offset + 5000;
+      return *this;
+    }
+  
+    TimeBar &skip()
+    {
+      offset = offset - 5000;
       return *this;
     }
   };

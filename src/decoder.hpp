@@ -31,8 +31,19 @@
 
 namespace light::decoder
 {
+  unsigned int size_to_time(std::size_t size, int bitrate)
+  {
+    return (size / 8192) * ((8192 * 8) / (bitrate / 1000));
+  }
+  
+  std::size_t time_to_size(unsigned int time, int bitrate)
+  {
+    return time * 8192 / ((8192 * 8) / (bitrate / 1000));
+  }
+  
   struct Data
   {
+    utils::MusicInfo decoder_info;
     std::shared_ptr<std::promise<utils::MusicInfo>> info;
     std::shared_ptr<stream::InputStream> input_stream;
     std::shared_ptr<encoder::EncodeStream> encode_stream;
@@ -114,6 +125,7 @@ namespace light::decoder
           .channels = 2,
           .size = d->input_stream->size()
       };
+      d->decoder_info = info;
       d->encode_stream->set_info(info);
       d->info->set_value(info);
       d->info = nullptr;
@@ -152,18 +164,28 @@ namespace light::decoder
       mad_decoder_run(&decoder, MAD_DECODER_MODE_SYNC);
       mad_decoder_finish(&decoder);
     }
-    
+  
     bool is_paused() const
     {
       return data.pause;
     }
-    
+  
     void pause()
     {
       if (data.pause)return;
       data.pause = true;
     }
-    
+  
+    void skip()
+    {
+      data.input_stream->seek_cur_offset(time_to_size(5000, data.decoder_info.bitrate));
+    }
+  
+    void rewind()
+    {
+      data.input_stream->seek_cur_offset(-1 * time_to_size(5000, data.decoder_info.bitrate));
+    }
+  
     void go()
     {
       if (!data.pause)return;

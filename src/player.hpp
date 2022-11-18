@@ -15,6 +15,7 @@
 #define LIGHT_PLAYER_HPP
 
 #include "http.hpp"
+#include "tagreader.hpp"
 #include "stream.hpp"
 #include "decoder.hpp"
 #include "utils.hpp"
@@ -23,21 +24,14 @@
 #include <chrono>
 #include <deque>
 #include <chrono>
-#include <random>
+#include <algorithm>
 #include <string>
 #include <fstream>
+#include <random>
 #include <filesystem>
 
 namespace light::player
 {
-  int randint(int a, int b)
-  {
-    unsigned seed = std::chrono::steady_clock::now().time_since_epoch().count();
-    std::default_random_engine e(seed);
-    std::uniform_int_distribution<unsigned> u(a, b);
-    return u(e);
-  }
-  
   class Player
   {
   private:
@@ -118,15 +112,15 @@ namespace light::player
   
     Player &skip()
     {
-      timebar.go();
-      decoder.go();
+      decoder.skip();
+      timebar.skip();
       return *this;
     }
   
     Player &rewind()
     {
-      timebar.go();
-      decoder.go();
+      decoder.rewind();
+      timebar.rewind();
       return *this;
     }
   
@@ -225,8 +219,9 @@ namespace light::player
           term::mv_xcenter_output(ypos++, "light - A simple music player by caozhanhao");
           ypos++;
           term::mvoutput({0, ypos++}, "Music List: ");
-          for (std::size_t i = 0; i < music_list.size(); ++i)
+          for (std::size_t i = index; i < music_list.size(); ++i)
           {
+            if (ypos > term::get_height() - 5) break;
             if (i == index)
             {
               term::mvoutput({0, ypos++}, std::to_string(i + 1) + "| "
@@ -238,11 +233,13 @@ namespace light::player
               term::mvoutput({0, ypos++}, std::to_string(i + 1) + "| " + music_list[i].name());
             }
           }
-          term::mvoutput({0, term::get_height() - 3}, "Playing: ");
+          auto file = music_list[index].get_file();
+          term::mvoutput({0, term::get_height() - 4}, "Playing: ");
           auto name = music_list[index].name();
+          term::mvoutput({0, term::get_height() - 3}, tagreader::TagInfo(file).common_info());
           term::mvoutput({0, term::get_height() - 2}, name);
           timebar.set_pos({name.size() + 1, term::get_height() - 2});
-          play(music_list[index].get_file());
+          play(file);
         }
         else
         {
@@ -251,6 +248,13 @@ namespace light::player
         index++;
         if (!light_is_running) return *this;
       }
+      return *this;
+    }
+  
+    Player &shuffle()
+    {
+      std::mt19937 gen(std::random_device{}());
+      std::shuffle(music_list.begin(), music_list.end(), gen);
       return *this;
     }
 

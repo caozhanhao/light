@@ -13,7 +13,12 @@
 //   limitations under the License.
 #ifndef LIGHT_UTILS_HPP
 #define LIGHT_UTILS_HPP
+
 #include <string>
+#include <cstring>
+#include <malloc.h>
+#include <iostream>
+
 namespace light::utils
 {
   struct MusicInfo

@@ -20,6 +20,7 @@ bool light_output = true;
 
 #include "light.hpp"
 #include <string>
+#include <memory>
 #include <signal.h>
 
 using namespace std;
@@ -63,6 +64,14 @@ int main(int argc, char *argv[])
                                      player.go();
                                      LIGHT_NOTICE("Quitting.");
                                      return;
+                                   case 'k':
+                                     player.rewind();
+                                     LIGHT_NOTICE("Rewind.");
+                                     break;
+                                   case 'l':
+                                     player.skip();
+                                     LIGHT_NOTICE("Skip.");
+                                     break;
                                    case ' ':
                                      if (player.is_paused())
                                      {
@@ -127,7 +136,7 @@ int main(int argc, char *argv[])
                    player.push_local(r);
                  }
                }
-             });
+             }, 8);
   option.add("f", "file-output",
              [&player](Option::CallbackArgType args)
              {
@@ -153,6 +162,11 @@ int main(int argc, char *argv[])
                  std::cout << "--output has too many arguments.\n";
                }
              });
+  option.add("shuffle",
+             [&player](Option::CallbackArgType args)
+             {
+               player.shuffle();
+             }, 7);
   option.add("h", "help",
              [](Option::CallbackArgType args)
              {
@@ -166,6 +180,7 @@ int main(int argc, char *argv[])
                          "                    (default:cache/)    playing online music.\n"
                          "-o, --output                            Output songs from list in order.\n"
                          "-f, --file-output   <filename>          Output will be a wav file \n"
+                         "--shuffle                               Shuffle\n"
                          "                                        instead of playing\n"
                          "--no-bar                                With no bar.\n"
                          "--example                               See some examples.\n"
